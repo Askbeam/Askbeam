@@ -1,0 +1,21 @@
+{
+  "name": "headless-geo",
+  "private": true,
+  "workspaces": [
+    "packages/geo-core",
+    "packages/geo-next",
+    "packages/payload-plugin-geo",
+    "packages/strapi-plugin-geo"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

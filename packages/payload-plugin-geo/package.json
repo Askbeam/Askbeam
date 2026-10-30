@@ -1,0 +1,46 @@
+{
+  "name": "payload-plugin-geo",
+  "version": "0.1.0",
+  "description": "Headless GEO for Payload CMS: log AI crawler visits (GPTBot, ClaudeBot, ChatGPT-User...) with IP verification.",
+  "license": "MIT",
+  "type": "module",
+  "keywords": [
+    "payload",
+    "payload-plugin",
+    "geo",
+    "llms.txt",
+    "ai-crawler",
+    "gptbot"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@headless-geo/core": "0.1.0"
+  },
+  "peerDependencies": {
+    "payload": "^3.0.0"
+  },
+  "devDependencies": {
+    "payload": "^3.92.1"
+  }
+}

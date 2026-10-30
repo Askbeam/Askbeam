@@ -1,0 +1,45 @@
+{
+  "name": "strapi-plugin-geo",
+  "version": "0.1.0",
+  "description": "Headless GEO for Strapi 5: log AI crawler visits (GPTBot, ClaudeBot, ChatGPT-User...) reported by your frontend.",
+  "license": "MIT",
+  "type": "commonjs",
+  "keywords": [
+    "strapi",
+    "strapi-plugin",
+    "geo",
+    "llms.txt",
+    "ai-crawler",
+    "gptbot"
+  ],
+  "strapi": {
+    "kind": "plugin",
+    "name": "geo",
+    "displayName": "Headless GEO",
+    "description": "AI crawler logs for headless sites."
+  },
+  "main": "./dist/server/index.js",
+  "types": "./dist/server/index.d.ts",
+  "exports": {
+    "./strapi-server": {
+      "types": "./dist/server/index.d.ts",
+      "require": "./strapi-server.js",
+      "default": "./strapi-server.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "strapi-server.js"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@headless-geo/core": "0.1.0"
+  },
+  "peerDependencies": {
+    "@strapi/strapi": "^5.0.0"
+  }
+}
