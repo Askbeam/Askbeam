@@ -4,9 +4,20 @@ import {
   ProbeRegistry,
   createIPVerifier,
   findProbeInBody,
+  buildSegment,
+  buildSegmentIndex,
   ingestHits,
+  parseOmit,
+  parseSegmentFile,
+  resolvedSegments,
+  validateInvalidationOptions,
+  invalidationActive,
+  validateRetention,
+  type InvalidationOptions,
+  type RetentionOptions,
   summarizeHits,
   windowStart,
+  type BotDefinition,
   type HitStore,
   type IPVerifierOptions,
   type StatsHit,
@@ -23,11 +34,17 @@ import {
   type CitationOptions,
   type ReferralOptions,
 } from './evidence.js'
+import { INVALIDATIONS_SLUG, changeHooks, invalidationEndpoints, invalidationsCollection, type ChangeContext } from './changes.js'
 import { inspectPayloadDocument } from './inspect.js'
+import { JOBS_SLUG, dataEndpoints, hitsHistoryIncomplete, jobsCollection, startAutoCleanup, type DataContext } from './maintenance.js'
 import { documentStats, runSetupTest, setupReport, type DiagnosticsOptions, type SetupContext } from './setup.js'
 import {
   loadDocumentByPath,
   loadLlmsDocuments,
+  loadLlmsListing,
+  llmsSite,
+  segmentSources,
+  validateLlmsOptions,
   renderJsonLd,
   renderLlms,
   renderMarkdown,
@@ -42,6 +59,11 @@ export interface GeoPluginOptions {
   verifyIPs?: boolean | IPVerifierOptions
   /** Store hits whose IP does not match the claimed bot. Default true. */
   storeSpoofed?: boolean
+  /**
+   * Bot list used to classify reported hits. Default: the built-in list. Use `defineBots([...])` to add your own,
+   * and pass the same list to withGeo({ bots }) in the frontend.
+   */
+  bots?: readonly BotDefinition[]
   /** Path of the ingest endpoint under the Payload API route. Default `/geo/ingest`. */
   ingestPath?: string
   /** Customize the generated collection (labels, access, admin, ...). */
@@ -65,6 +87,17 @@ export interface GeoPluginOptions {
    */
   referrals?: ReferralOptions
   /**
+   * Cache invalidation notices: after a publish, edit, unpublish or delete in `llms.collections`, POST a signed
+   * event to these targets (e.g. the frontend's revalidation route). Adds the `geo-invalidations` collection
+   * (a migration on SQL databases). Off unless targets are set.
+   */
+  invalidation?: InvalidationOptions
+  /**
+   * Retention, cleanup and export of the stored GEO data (dashboard "Data" tab, `/api/geo/data*`). Deleting is
+   * off unless `allowDelete` is true; back up the database first. Export is always available to admins.
+   */
+  retention?: RetentionOptions
+  /**
    * Citation evidence entered by hand. Off by default; enabling it adds the `geo-citations` collection
    * (and `geo-citation-screenshots` unless `screenshots: false`), which needs a migration on SQL databases.
    */
@@ -73,20 +106,24 @@ export interface GeoPluginOptions {
 
 export { AI_REFERRALS_SLUG, CITATIONS_SLUG, type CitationOptions, type ReferralOptions }
 export { CRAWLER_HITS_SLUG, crawlerHitsCollection, loadDocumentByPath, loadLlmsDocuments, type LlmsOptions, type PayloadLlmsSource }
+export { INVALIDATIONS_SLUG } from './changes.js'
+export { JOBS_SLUG } from './maintenance.js'
 
 const MAX_STATS_HITS = 100_000
 
 /** `Cache-Control` for public output. Errors are cached briefly so a newly published page shows up soon. */
-export function cacheControl(maxAge: number | undefined, status: number): string {
+export function cacheControl(maxAge: number | undefined, status: number, notFoundMaxAge?: number): string {
   const age = maxAge ?? 300
   if (age <= 0) return 'no-store'
-  return `public, max-age=${status === 200 ? age : Math.min(age, 60)}`
+  if (status === 200) return `public, max-age=${age}`
+  const short = notFoundMaxAge ?? Math.min(age, 60)
+  return short <= 0 ? 'no-store' : `public, max-age=${Math.min(short, age)}`
 }
 
-function text(body: string, status = 200, type = 'text/plain', maxAge?: number): Response {
+function text(body: string, status = 200, type = 'text/plain', maxAge?: number, notFoundMaxAge?: number): Response {
   return new Response(body, {
     status,
-    headers: { 'content-type': `${type}; charset=utf-8`, 'cache-control': cacheControl(maxAge, status) },
+    headers: { 'content-type': `${type}; charset=utf-8`, 'cache-control': cacheControl(maxAge, status, notFoundMaxAge) },
   })
 }
 
@@ -98,6 +135,12 @@ function pathParam(req: { url?: string }): string | null {
 export const geoPlugin =
   (options: GeoPluginOptions = {}): Plugin =>
   (config: Config): Config => {
+    if (options.llms) validateLlmsOptions(options.llms)
+    validateInvalidationOptions(options.invalidation)
+    validateRetention(options.retention)
+    const invalidationOn = !!options.llms && invalidationActive(options.invalidation)
+    let allCollections: CollectionConfig[] = []
+    const changeContext: ChangeContext | null = invalidationOn ? { llms: options.llms!, collections: () => allCollections, invalidation: options.invalidation!, serverURL: config.serverURL } : null
     const verifyIPs = options.verifyIPs ?? true
     const verifier = verifyIPs ? createIPVerifier(verifyIPs === true ? {} : verifyIPs) : undefined
     const probes = new ProbeRegistry()
@@ -132,9 +175,23 @@ export const geoPlugin =
               ],
             }
           : c,
-      ),
+      ).map((c) => {
+        if (!changeContext || !options.llms!.collections[c.slug]) return c
+        const h = changeHooks(c.slug, changeContext)
+        return {
+          ...c,
+          hooks: {
+            ...c.hooks,
+            beforeChange: [...(c.hooks?.beforeChange ?? []), h.beforeChange],
+            afterChange: [...(c.hooks?.afterChange ?? []), h.afterChange],
+            beforeDelete: [...(c.hooks?.beforeDelete ?? []), h.beforeDelete],
+            afterDelete: [...(c.hooks?.afterDelete ?? []), h.afterDelete],
+          },
+        }
+      }),
       collection,
     ]
+    if (changeContext) collections.push(invalidationsCollection())
     const referralsOn = options.referrals?.enabled === true
     const citationsOn = options.citations?.enabled === true
     if (referralsOn) collections.push(referralsCollection(options.referrals?.collection))
@@ -142,6 +199,16 @@ export const geoPlugin =
       const screenshots = options.citations?.screenshots !== false
       if (screenshots) collections.push(citationScreenshotsCollection())
       collections.push(citationsCollection({ usersSlug: config.admin?.user ?? 'users', screenshots, overrides: options.citations?.collection }))
+    }
+    collections.push(jobsCollection())
+    allCollections = collections
+    const dataContext: DataContext = {
+      retention: options.retention,
+      datasets: {
+        hits: { slug: collection.slug, time: 'timestamp' },
+        ...(referralsOn ? { referrals: { slug: AI_REFERRALS_SLUG, time: 'timestamp' } } : {}),
+        ...(changeContext ? { invalidations: { slug: INVALIDATIONS_SLUG, time: 'createdAt' } } : {}),
+      },
     }
 
     const ingestEndpoint: Endpoint = {
@@ -170,6 +237,7 @@ export const geoPlugin =
           secret: options.secret,
           verifier,
           storeSpoofed: options.storeSpoofed,
+          bots: options.bots,
           store,
           probes,
           log: ingestLog,
@@ -196,7 +264,8 @@ export const geoPlugin =
         const contentPaths = options.llms
           ? (await loadLlmsDocuments(req.payload, options.llms, collections, config.serverURL)).map((d) => d.url)
           : undefined
-        return Response.json(summarizeHits(result.docs as unknown as StatsHit[], { days, contentPaths }))
+        const history = await hitsHistoryIncomplete(req.payload, windowStart(days))
+        return Response.json({ ...summarizeHits(result.docs as unknown as StatsHit[], { days, contentPaths }), ...history })
       },
     }
 
@@ -222,16 +291,38 @@ export const geoPlugin =
       { path: '/geo/document-stats', method: 'get', handler: (req) => documentStats(req, setupContext) },
       ...evidenceEndpoints({ referrals: options.referrals, citations: options.citations, secret: options.secret, probes, adminRoute: config.routes?.admin ?? '/admin' }),
     ]
+    if (changeContext) endpoints.push(...invalidationEndpoints(changeContext))
+    endpoints.push(...dataEndpoints(dataContext))
     if (options.llms) {
       const llms = options.llms
+      const segments = resolvedSegments(llms.segments, llms.siteURL)
+      const reply = (body: string | null, type = 'text/plain') =>
+        body === null ? text('Not found\n', 404, 'text/plain', llms.cacheMaxAge, llms.notFoundMaxAge) : text(body, 200, type, llms.cacheMaxAge)
       for (const full of [false, true]) {
         endpoints.push({
           path: full ? '/geo/llms-full.txt' : '/geo/llms.txt',
           method: 'get',
-          handler: async (req) =>
-            text(renderLlms(llms, await loadLlmsDocuments(req.payload, llms, collections, config.serverURL), full), 200, 'text/plain', llms.cacheMaxAge),
+          handler: async (req) => {
+            if (segments.enabled) {
+              return reply(await buildSegmentIndex(llmsSite(llms), segmentSources(req.payload, llms, collections, config.serverURL), llms.segments, llms.siteURL, { full, markdownLinks: llms.markdownLinks }))
+            }
+            const listing = await loadLlmsListing(req.payload, llms, collections, config.serverURL)
+            return reply(renderLlms(llms, listing.docs, full, listing.notes))
+          },
         })
       }
+      // Part files of segmented llms.txt: `/api/geo/llms/<collection>-<n>.txt` and `…-<n>-full.txt`.
+      if (segments.enabled) endpoints.push({
+        path: '/geo/llms/:file',
+        method: 'get',
+        handler: async (req) => {
+          const file = String((req as { routeParams?: Record<string, unknown> }).routeParams?.file ?? new URL(req.url ?? '', 'http://x').pathname.split('/').pop() ?? '')
+          const parsed = parseSegmentFile(file)
+          const source = parsed && segmentSources(req.payload, llms, collections, config.serverURL).find((s) => s.key === parsed.key)
+          if (!parsed || !source) return reply(null)
+          return reply(await buildSegment(llmsSite(llms), source, parsed.part, parsed.full, llms.segments, llms.siteURL, { markdownLinks: llms.markdownLinks }))
+        },
+      })
       // Editor checks and previews of the current (possibly unsaved) edits: logged-in users only, never cached.
       endpoints.push({
         path: '/geo/inspect',
@@ -256,7 +347,7 @@ export const geoPlugin =
             const path = pathParam(req)
             if (!path) return text('`path` query parameter is required\n', 400)
             const doc = await loadDocumentByPath(req.payload, llms, collections, path, config.serverURL)
-            return doc ? text(renderMarkdown(doc), 200, 'text/markdown', llms.cacheMaxAge) : text('Not found\n', 404, 'text/plain', llms.cacheMaxAge)
+            return doc ? text(renderMarkdown(doc), 200, 'text/markdown', llms.cacheMaxAge) : text('Not found\n', 404, 'text/plain', llms.cacheMaxAge, llms.notFoundMaxAge)
           },
         },
         {
@@ -266,8 +357,9 @@ export const geoPlugin =
             const path = pathParam(req)
             if (!path) return Response.json({ error: '`path` query parameter is required' }, { status: 400 })
             const doc = await loadDocumentByPath(req.payload, llms, collections, path, config.serverURL)
-            const data = doc ? renderJsonLd(llms, doc) : null
-            if (!data) return Response.json({ error: 'not found' }, { status: 404, headers: { 'cache-control': cacheControl(llms.cacheMaxAge, 404) } })
+            const omit = parseOmit(new URL(req.url ?? '', 'http://x').searchParams.get('omit'), llms.hostManaged)
+            const data = doc ? renderJsonLd(llms, doc, omit) : null
+            if (!data) return Response.json({ error: 'not found' }, { status: 404, headers: { 'cache-control': cacheControl(llms.cacheMaxAge, 404, llms.notFoundMaxAge) } })
             return new Response(JSON.stringify(data), {
               headers: { 'content-type': 'application/ld+json; charset=utf-8', 'cache-control': cacheControl(llms.cacheMaxAge, 200) },
             })
@@ -285,6 +377,8 @@ export const geoPlugin =
           statsURL: `${statsBase}/geo/stats`,
           setupURL: compact ? undefined : `${statsBase}/geo/setup`,
           evidenceURL: compact ? undefined : `${statsBase}/geo/evidence`,
+          dataURL: compact ? undefined : `${statsBase}/geo/data`,
+          invalidationsURL: compact || !changeContext ? undefined : `${statsBase}/geo/invalidations`,
           compact,
           moreHref: hitsHref,
           hitsHref,
@@ -321,6 +415,7 @@ export const geoPlugin =
         if (referralsOn && !options.secret) {
           payload.logger.warn('[geo] `referrals` is enabled but no secret is configured, so referral reports are refused. Set `secret` in geoPlugin().')
         }
+        startAutoCleanup(payload, dataContext)
         await onInit?.(payload)
       },
     }

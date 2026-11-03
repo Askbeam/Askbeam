@@ -1,11 +1,23 @@
-import type { CheckThresholds, LlmsSourceConfig } from '@garus-ltd/geo-core'
+import { createContentConverter, defineRules, type BotDefinition, type CheckThresholds, type ContentConverterOptions, type GeoRule, type LlmsSourceConfig, type OrganizationConfig, type SegmentOptions, type InvalidationOptions, type RetentionOptions, validateInvalidationOptions, validateRetention } from '@garus-ltd/geo-core'
 import type { StrapiCitationConfig, StrapiReferralConfig } from './evidence'
 
 export interface StrapiLlmsSource extends LlmsSourceConfig {
   /** Extra Document Service filters, e.g. `{ noindex: { $ne: true } }`. */
   filters?: Record<string, unknown>
-  /** Max documents from this content type. Default 500. */
+  /** Max documents from this content type in llms.txt / llms-full.txt. Default 500. With `segments` on, all are listed in parts. */
   limit?: number
+  /** Order of the list, e.g. `'publishedAt:desc'`. Default `updatedAt:desc` (`createdAt:asc` with segments); `id:asc` is always added last. */
+  sort?: string | string[]
+  /**
+   * Document Service `populate` for this content type. Default: built from the schema (media, components and
+   * dynamic zones at any depth up to `populateDepth`, relations one level). The output sanitizer still drops
+   * whatever the Public role can't read.
+   */
+  populate?: unknown
+  /** Component / dynamic zone nesting the default populate follows. Default 5. */
+  populateDepth?: number
+  /** Block / component converters for this content type, merged over `llms.converters`. */
+  converters?: ContentConverterOptions
   /**
    * Per-entry public check, for rules the Public role can't express: custom route policies, members-only
    * flags, document-level permissions from another plugin. Runs after the Public role check and Strapi's
@@ -26,6 +38,13 @@ export interface StrapiLlmsConfig {
   contentTypes: Record<string, StrapiLlmsSource>
   /** Logo for the JSON-LD publisher, absolute or a path on the site. */
   logo?: string
+  /** The site organization as a JSON-LD node with a stable `@id`, used as publisher of every article. */
+  organization?: OrganizationConfig
+  /**
+   * JSON-LD types the host site already outputs itself. `GET /api/geo/jsonld?omit=host` leaves them out; without
+   * `omit` the endpoint still returns everything.
+   */
+  hostManaged?: string[]
   /** Content language for JSON-LD, e.g. `en`. */
   language?: string
   /** Base for relative media URLs such as `/uploads/a.png`, usually the Strapi URL. Default: Strapi `server.url`, else `siteURL`. */
@@ -44,12 +63,27 @@ export interface StrapiLlmsConfig {
    * this long. `0` sends `no-store`.
    */
   cacheMaxAge?: number
+  /** Seconds a 404 of the public outputs may be cached. Default: `cacheMaxAge` capped at 60. */
+  notFoundMaxAge?: number
+  /** Byte limit of the single llms-full.txt; entries beyond it are listed as not included. Default 5 MB. */
+  fullMaxBytes?: number
+  /** Split llms.txt / llms-full.txt into parts for large sites (`/api/geo/llms/<name>-<n>.txt`). Off by default. */
+  segments?: SegmentOptions
   /** Thresholds of the editor panel's length suggestions. */
   checks?: CheckThresholds
   /** Show the read-only GEO panel in the content manager's edit view of the listed content types. Default true. */
   editorPanel?: boolean
   /** Other hosts of the same site (e.g. `www.example.com`), counted with `siteURL`'s host in per-page visits. */
   hosts?: string[]
+  /**
+   * Converters for your components (by UID, e.g. `shared.hero`, or the part after the dot) and Blocks nodes, used
+   * by Markdown, llms-full.txt and the editor preview alike. Built-in ones cover the Strapi blog template components.
+   */
+  converters?: ContentConverterOptions
+  /** Custom editor panel checks, run after the built-in ones. Validated at startup (see `defineRules`). */
+  rules?: GeoRule<any>[]
+  /** Time limit per async custom rule. Default 2000 ms. */
+  rulesTimeoutMs?: number
 }
 
 export interface GeoStrapiConfig {
@@ -61,6 +95,8 @@ export interface GeoStrapiConfig {
   storeSpoofed: boolean
   /** Stop accepting hits without removing the content type. */
   enabled: boolean
+  /** Bot list used to classify reported hits (e.g. from `defineBots`). Default: the built-in list. */
+  bots?: readonly BotDefinition[]
   /** Serve `/api/geo/llms.txt` and `/api/geo/llms-full.txt`. */
   llms: StrapiLlmsConfig | null
   /** Setup status view: connectivity test limits. */
@@ -74,11 +110,24 @@ export interface GeoStrapiConfig {
   referrals?: StrapiReferralConfig
   /** Citation evidence entered by hand in the content manager. Off by default. */
   citations?: StrapiCitationConfig
+  /**
+   * Cache invalidation notices: after a publish, edit, unpublish, discard or delete in `llms.contentTypes`, or a
+   * Public role permission change, POST a signed event to these targets (e.g. the frontend's revalidation route).
+   * Delivery results are kept in the `Cache Notice` content type. Off unless targets are set.
+   */
+  invalidation?: InvalidationOptions
+  /**
+   * Retention, cleanup and export of the stored GEO data (dashboard "Data" tab, admin `/geo/data*`). Deleting is
+   * off unless `allowDelete` is true; back up the database first. Export is always available to admins.
+   */
+  retention?: RetentionOptions
 }
 
 export default {
   default: (): GeoStrapiConfig => ({ secret: '', verifyIPs: true, storeSpoofed: true, enabled: true, llms: null }),
   validator(config: Partial<GeoStrapiConfig>) {
+    validateInvalidationOptions(config.invalidation)
+    validateRetention(config.retention)
     if (config.secret !== undefined && typeof config.secret !== 'string') {
       throw new Error('[geo] `secret` must be a string')
     }
@@ -87,9 +136,13 @@ export default {
       if (typeof config.llms.contentTypes !== 'object') throw new Error('[geo] `llms.contentTypes` is required')
       const age = config.llms.cacheMaxAge
       if (age !== undefined && !(Number.isInteger(age) && age >= 0)) throw new Error('[geo] `llms.cacheMaxAge` must be a whole number of seconds')
+      const nf = config.llms.notFoundMaxAge
+      if (nf !== undefined && !(Number.isInteger(nf) && nf >= 0)) throw new Error('[geo] `llms.notFoundMaxAge` must be a whole number of seconds')
       for (const [uid, source] of Object.entries(config.llms.contentTypes)) {
         if (source?.isPublic !== undefined && typeof source.isPublic !== 'function') throw new Error(`[geo] \`isPublic\` of ${uid} must be a function`)
+        createContentConverter({ ...config.llms.converters, ...source?.converters })
       }
+      if (config.llms.rules) defineRules(config.llms.rules)
     }
   },
 }

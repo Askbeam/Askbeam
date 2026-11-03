@@ -5,8 +5,10 @@
  * requirements, they don't predict whether an AI will cite the page, and "pass" only means the
  * plugin's rule passed.
  */
-import { buildJsonLd, serializeJsonLd, type JsonLd, type JsonLdSite } from './jsonld.js'
-import { documentMarkdown, getField, mapLlmsDocument, sourceFields, type LlmsDocument, type LlmsMappingOptions, type LlmsMappingSources } from './llms.js'
+import { buildJsonLdDetailed, serializeJsonLd, type JsonLd, type JsonLdSite } from './jsonld.js'
+import type { SchemaIssue } from './schema.js'
+import type { ConversionWarning } from './convert.js'
+import { documentMarkdown, getField, mapLlmsDocument, sourceFields, type FieldOrigin, type LlmsDocument, type LlmsMappingOptions, type LlmsMappingSources } from './llms.js'
 
 export type CheckStatus = 'pass' | 'warning' | 'error' | 'notApplicable'
 
@@ -55,7 +57,9 @@ export interface InspectOptions extends LlmsMappingOptions {
 
 /** Where a value in the output came from. */
 export interface FieldDiagnostic {
-  property: 'url' | 'title' | 'description' | 'content' | 'author' | 'image' | 'datePublished' | 'dateModified' | 'faq'
+  property: 'url' | 'title' | 'description' | 'content' | 'author' | 'image' | 'datePublished' | 'dateModified' | 'canonical' | 'faq'
+  /** Whether the field came from the GEO config, the SEO fields or a default name. */
+  origin?: FieldOrigin
   /** Field path the value was read from, or null when none was found. */
   field: string | null
   /** The value in the output, shortened. */
@@ -74,6 +78,12 @@ export interface Inspection {
   jsonLdScript: string | null
   validation: CheckResult[]
   diagnostics: FieldDiagnostic[]
+  /** Which field each value came from. */
+  sources: LlmsMappingSources
+  /** Converted body, also for a document without URL. */
+  contentMarkdown: string
+  /** Content converter warnings (unknown blocks, unavailable relations, limits). */
+  conversion: { warnings: ConversionWarning[]; truncated: boolean }
 }
 
 const r = (ruleId: string, status: CheckStatus, message: string, suggestion: string, fieldPath?: string): CheckResult =>
@@ -108,8 +118,28 @@ function hasValue(v: unknown): boolean {
   return true
 }
 
+function conversionRule(warnings: ConversionWarning[], truncated: boolean, hasBody: boolean): CheckResult {
+  if (!hasBody) return r('GEO-CONVERSION', 'notApplicable', 'No body to convert.', 'Nothing to do.')
+  if (!warnings.length) return r('GEO-CONVERSION', 'pass', 'All blocks and nodes converted.', 'Nothing to do.')
+  const serious = warnings.filter((w) => w.code !== 'unknown-node')
+  const list = warnings
+    .slice(0, 5)
+    .map((w) => `${w.code}${w.type ? ` "${w.type}"` : ''} at ${w.path || '(root)'}${w.count > 1 ? ` (×${w.count})` : ''}`)
+    .join('; ')
+  const first = warnings[0]!
+  return r(
+    'GEO-CONVERSION',
+    truncated || serious.some((w) => w.code === 'converter-error') ? 'error' : 'warning',
+    `${truncated ? 'Content was cut by a conversion limit. ' : ''}${warnings.length} conversion warning${warnings.length > 1 ? 's' : ''}: ${list}${warnings.length > 5 ? '; …' : ''}`,
+    first.message,
+    first.path || undefined,
+  )
+}
+
 function fieldRule(options: InspectOptions): CheckResult {
   const { source, knownFields } = options
+  const specPaths = (name: string, spec: unknown): Array<[string, string]> =>
+    (Array.isArray(spec) ? spec : [spec]).filter((e): e is string => typeof e === 'string').map((p) => [name, p])
   const candidates: Array<[string, string | undefined]> = [
     ['titleField', source.titleField],
     ['descriptionField', source.descriptionField],
@@ -119,6 +149,9 @@ function fieldRule(options: InspectOptions): CheckResult {
     ['publishedField', source.publishedField],
     ['faqField', source.faqField],
     ['sourcesField', options.sourcesField],
+    ...(source.contentFields ?? []).map((p): [string, string] => ['contentFields', p]),
+    ...Object.entries(source.fields ?? {}).flatMap(([k, spec]) => specPaths(`fields.${k}`, spec)),
+    ...Object.entries(source.seo ?? {}).flatMap(([k, spec]) => specPaths(`seo.${k}`, spec)),
   ]
   const configured = candidates.filter((entry): entry is [string, string] => typeof entry[1] === 'string')
   if (!knownFields) {
@@ -168,10 +201,10 @@ export function inspectDocument(doc: Record<string, any>, options: InspectOption
 
   // Body
   const raw = mapping.rawContent
-  const markdownBody = options.markdown(raw)
+  const markdownBody = mapping.markdown
   if (!hasValue(raw)) checks.push(r('GEO-BODY', 'error', 'Body is empty.', `Write the content in \`${fields.content[0]}\`. llms-full.txt and the Markdown page are empty without it.`, fields.content[0]))
   else if (!markdownBody.trim())
-    checks.push(r('GEO-BODY', 'error', 'Body has content but converts to empty Markdown.', 'Use Lexical, Strapi Blocks or Markdown text, or set `contentField` to the rich text field.', sources.content ?? undefined))
+    checks.push(r('GEO-BODY', 'error', 'Body has content but converts to empty Markdown.', mapping.conversion.warnings.length ? 'See GEO-CONVERSION: register converters for the blocks listed there.' : 'Use Lexical, Strapi Blocks or Markdown text, or set `contentField` to the rich text field.', sources.content ?? undefined))
   else checks.push(r('GEO-BODY', 'pass', `Body converts to ${markdownBody.length} characters of Markdown.`, 'Nothing to do.', sources.content ?? undefined))
 
   // Subheadings (suggestion only)
@@ -221,6 +254,21 @@ export function inspectDocument(doc: Record<string, any>, options: InspectOption
     )
   }
 
+  // Content conversion: unknown blocks, unavailable relations, limits
+  checks.push(conversionRule(mapping.conversion.warnings, mapping.conversion.truncated, hasValue(raw)))
+
+  // Canonical URL from GEO / SEO fields
+  if (!sources.canonical) checks.push(r('GEO-CANONICAL', 'notApplicable', 'No canonical field mapped or filled; the frontend URL is used.', 'Optional: map `fields.canonical` or `seo.canonical`.'))
+  else if (!document?.canonical || !isHttpURL(document.canonical))
+    checks.push(r('GEO-CANONICAL', 'error', `Canonical "${String(getField(doc, sources.canonical) ?? '')}" is not an http(s) URL or path.`, 'Fix the canonical field.', sources.canonical))
+  else if (document.canonical.replace(/\/+$/, '') !== document.url.replace(/\/+$/, ''))
+    checks.push(r('GEO-CANONICAL', 'warning', `Canonical ${document.canonical} differs from the frontend URL ${document.url}. JSON-LD uses the canonical; llms.txt and Markdown keep the frontend URL.`, 'Check that this is intended (e.g. syndicated content).', sources.canonical))
+  else checks.push(r('GEO-CANONICAL', 'pass', 'Canonical matches the frontend URL.', 'Nothing to do.', sources.canonical))
+
+  // Field resolvers that threw
+  for (const [prop, message] of Object.entries(mapping.fieldErrors ?? {}))
+    checks.push(r(`GEO-FIELDS-${prop.toUpperCase()}`, 'error', `Field resolver for ${prop} threw: ${String(message).slice(0, 200)}`, 'Fix the resolver function in `fields`.'))
+
   // Field mapping
   checks.push(fieldRule(options))
 
@@ -249,7 +297,8 @@ export function inspectDocument(doc: Record<string, any>, options: InspectOption
   else if (!state.publicVisible) checks.push(r('GEO-PUBLIC', 'warning', `Not in the public outputs${state.publicReason ? `: ${state.publicReason}` : '.'}`, 'Publish it and make sure anonymous visitors may read it.'))
   else checks.push(r('GEO-PUBLIC', 'pass', 'Anonymous visitors get it in llms.txt, Markdown and JSON-LD.', 'Nothing to do.'))
 
-  const jsonLd = document ? buildJsonLd(options.site, document) : null
+  const built = document ? buildJsonLdDetailed(options.site, document) : null
+  const jsonLd = built?.data ?? null
   const jsonLdScript = jsonLd ? serializeJsonLd(jsonLd) : null
   return {
     checks,
@@ -257,8 +306,11 @@ export function inspectDocument(doc: Record<string, any>, options: InspectOption
     markdown: document ? documentMarkdown(document) : null,
     jsonLd,
     jsonLdScript,
-    validation: validateJsonLd(jsonLd, document, options.source.jsonLd === false),
+    validation: validateJsonLd(jsonLd, document, options.source.jsonLd === false, built?.issues ?? []),
     diagnostics: diagnose(document, sources, options),
+    sources,
+    contentMarkdown: mapping.markdown,
+    conversion: mapping.conversion,
   }
 }
 
@@ -273,8 +325,16 @@ function diagnose(document: LlmsDocument | null, sources: LlmsMappingSources, op
     { property: 'image', field: sources.image, value: d?.image ?? null, fallback: d?.image ? undefined : 'none' },
     { property: 'datePublished', field: sources.published, value: d?.publishedAt ?? null, fallback: sources.published ? undefined : 'left out' },
     { property: 'dateModified', field: sources.updated, value: d?.updatedAt ?? null, fallback: sources.updated ? undefined : 'datePublished, when set' },
+    { property: 'canonical', field: sources.canonical, value: d?.canonical ?? null, fallback: sources.canonical ? undefined : 'the frontend URL' },
     { property: 'faq', field: sources.faq, value: d?.faq?.length ? `${d.faq.length} items` : null, fallback: sources.faq ? undefined : 'no FAQPage' },
-  ].map((x) => (x.fallback === undefined ? { property: x.property, field: x.field, value: x.value } : x)) as FieldDiagnostic[]
+  ].map((x) => {
+    const key = ({ datePublished: 'published', dateModified: 'updated' } as Record<string, string>)[x.property] ?? x.property
+    const origin = sources.origins?.[key as keyof LlmsMappingSources['origins']]
+    const base: FieldDiagnostic = { property: x.property as FieldDiagnostic['property'], field: x.field, value: x.value }
+    if (origin && x.field) base.origin = origin
+    if (x.fallback !== undefined) base.fallback = x.fallback
+    return base
+  })
 }
 
 const ARTICLE_TYPES = new Set(['Article', 'BlogPosting', 'NewsArticle', 'TechArticle', 'ScholarlyArticle', 'Report'])
@@ -284,9 +344,13 @@ const ARTICLE_TYPES = new Set(['Article', 'BlogPosting', 'NewsArticle', 'TechArt
  * date order, absolute URLs, the FAQPage belonging to the same page, and safe `<script>` serialization.
  * Passing means the plugin's rules pass, not Google rich result eligibility or full schema.org validation.
  */
-export function validateJsonLd(jsonLd: JsonLd | null, document: LlmsDocument | null, disabled = false): CheckResult[] {
+export function validateJsonLd(jsonLd: JsonLd | null, document: LlmsDocument | null, disabled = false, issues: SchemaIssue[] = []): CheckResult[] {
   if (disabled) return [r('LD-ENABLED', 'notApplicable', 'JSON-LD is turned off for this collection.', 'Nothing to do.')]
-  if (!jsonLd || !document) return [r('LD-ENABLED', 'error', 'No JSON-LD: the document has no frontend URL.', 'Fix the URL first.')]
+  const presetIssues = issues.map((i) =>
+    r(i.ruleId, i.severity, `${i.nodeType}${i.property ? ` ${i.property}` : ''}: ${i.message}`, i.severity === 'error' ? 'Fill or fix the field; the node is not output until then.' : 'Optional: fill or fix the field.', i.field),
+  )
+  if (!document) return [r('LD-ENABLED', 'error', 'No JSON-LD: the document has no frontend URL.', 'Fix the URL first.')]
+  if (!jsonLd) return [r('LD-ENABLED', 'error', 'No JSON-LD node could be built.', 'See the messages below.'), ...presetIssues]
   const out: CheckResult[] = []
   const script = serializeJsonLd(jsonLd)
   let parsed: any
@@ -303,7 +367,12 @@ export function validateJsonLd(jsonLd: JsonLd | null, document: LlmsDocument | n
       : r('LD-SCRIPT', 'pass', 'Safe to embed in <script type="application/ld+json"> (`<` is escaped).', 'Nothing to do.'),
   )
   const graph: any[] = Array.isArray(parsed['@graph']) ? parsed['@graph'] : [parsed]
-  const main = graph[0] ?? {}
+  const pageURL = document.canonical ?? document.url
+  const main = graph.find((n) => String(n['@id'] ?? '').startsWith(`${pageURL}#`) && n['@type'] !== 'FAQPage' && n['@type'] !== 'BreadcrumbList') ?? null
+  if (!main) {
+    out.push(r('LD-REQUIRED', 'error', `The ${document.schemaType} node was left out.`, 'See the messages below for the missing or invalid fields.'), ...presetIssues)
+    return out
+  }
   const isArticle = ARTICLE_TYPES.has(main['@type'])
   const required = isArticle ? ['@type', 'headline', 'url'] : ['@type', 'name', 'url']
   const missing = required.filter((k) => !hasValue(main[k]))
@@ -328,7 +397,9 @@ export function validateJsonLd(jsonLd: JsonLd | null, document: LlmsDocument | n
 
   const urls: Array<[string, unknown]> = [['url', main.url], ['@id', main['@id']]]
   if (Array.isArray(main.image)) main.image.forEach((u: unknown, i: number) => urls.push([`image[${i}]`, u]))
+  else if (typeof main.image === 'string') urls.push(['image', main.image])
   if (main.publisher?.logo?.url) urls.push(['publisher.logo', main.publisher.logo.url])
+  for (const n of graph) if (n !== main && n.logo?.url) urls.push([`${n['@type']}.logo`, n.logo.url])
   const badURL = urls.find(([, u]) => typeof u !== 'string' || !isHttpURL(u.split('#')[0]))
   out.push(
     badURL
@@ -346,6 +417,11 @@ export function validateJsonLd(jsonLd: JsonLd | null, document: LlmsDocument | n
     else if (!items.length || broken.length) out.push(r('LD-FAQ', 'error', `${broken.length || 'All'} FAQ questions lack a name or answer.`, 'Fill the FAQ items.'))
     else out.push(r('LD-FAQ', 'pass', `FAQPage with ${items.length} questions, on the same page as the ${main['@type']}.`, 'Nothing to do.'))
   }
+  // Every @id is defined once, and every reference points at a node in the graph or is an absolute URL.
+  const ids = graph.map((n) => n['@id']).filter(Boolean)
+  const dupes = ids.filter((id, i) => ids.indexOf(id) !== i)
+  if (dupes.length) out.push(r('LD-IDS', 'error', `Duplicate @id in the graph: ${[...new Set(dupes)].join(', ')}.`, 'Report this as a plugin bug, or check `extend`.'))
+  out.push(...presetIssues)
   return out
 }
 

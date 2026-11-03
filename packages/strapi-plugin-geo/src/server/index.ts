@@ -1,9 +1,17 @@
 import {
+  invalidationActive,
   GEO_SECRET_HEADER,
   IngestLog,
   ProbeRegistry,
   findProbeInBody,
   buildJsonLd,
+  buildSegment,
+  buildSegmentIndex,
+  included,
+  parseSegmentFile,
+  resolvedSegments,
+  segmentKey,
+  type SegmentSource,
   buildLlmsFullTxt,
   buildLlmsTxt,
   createIPVerifier,
@@ -11,7 +19,8 @@ import {
   findDocumentByPath,
   ingestHits,
   lastSegment,
-  richTextToMarkdown,
+  omitJsonLdTypes,
+  parseOmit,
   summarizeHits,
   toLlmsDocument,
   windowStart,
@@ -20,17 +29,25 @@ import {
   type StatsHit,
 } from '@garus-ltd/geo-core'
 import { publicAccess, type PublicAccess } from './access'
+import { jsonLdSite, mappingOptions, pluralName, populateOf } from './content'
 import config, { type GeoStrapiConfig, type StrapiLlmsConfig } from './config'
 import { AI_REFERRAL_UID, CITATION_UID, citationMiddleware, evidenceReport, ingestReferralReport } from './evidence'
+import { changeMiddleware, invalidationControllers, subscribePermissionChanges, type ChangeDeps } from './changes'
+import { INVALIDATION_UID } from './changes'
 import { inspectStrapiEntry } from './inspect'
+import { JOB_UID, dataControllers, hitsHistoryIncomplete, startAutoCleanup, type DataContext } from './maintenance'
 import { documentStats, runSetupTest, setupReport, type SetupState } from './setup'
 import aiReferralSchema from './content-types/ai-referral/schema'
 import citationSchema from './content-types/citation/schema'
 import crawlerHitSchema from './content-types/crawler-hit/schema'
+import invalidationSchema from './content-types/invalidation/schema'
+import jobSchema from './content-types/job/schema'
 import type { KoaContextLike, StrapiLike } from './types'
 
 export { checkFindRoute, publicAccess, type PublicAccess } from './access'
 export { AI_REFERRAL_UID, CITATION_UID } from './evidence'
+export { INVALIDATION_UID } from './changes'
+export { JOB_UID } from './maintenance'
 export const CRAWLER_HIT_UID = 'plugin::geo.crawler-hit'
 const PAGE_SIZE = 1000
 const MAX_STATS_HITS = 100_000
@@ -46,10 +63,13 @@ function getConfig(strapi: StrapiLike): GeoStrapiConfig {
     verifyIPs: plugin.config('verifyIPs', true),
     storeSpoofed: plugin.config('storeSpoofed', true),
     enabled: plugin.config('enabled', true),
+    bots: plugin.config('bots', undefined),
     llms: plugin.config('llms', null),
     diagnostics: plugin.config('diagnostics', {}),
     referrals: plugin.config('referrals', {}),
     citations: plugin.config('citations', {}),
+    invalidation: plugin.config('invalidation', undefined),
+    retention: plugin.config('retention', undefined),
   }
 }
 
@@ -62,24 +82,53 @@ export async function publicContentTypes(strapi: StrapiLike, llms: StrapiLlmsCon
   return (await publicAccess(strapi, llms)).allowed
 }
 
-async function findEntries(strapi: StrapiLike, uid: string, source: StrapiLlmsSource, extra?: Record<string, unknown>) {
-  const filters = source.filters && extra ? { $and: [source.filters, extra] } : (extra ?? source.filters)
+const READ_BATCH = 100
+
+function sortOf(source: StrapiLlmsSource, segmented: boolean): string[] {
+  const own = source.sort == null ? [] : Array.isArray(source.sort) ? source.sort : [source.sort]
+  const base = own.length ? own : segmented ? ['createdAt:asc'] : ['updatedAt:desc']
+  // `id` last, so entries with the same date always come in the same order.
+  return base.some((s) => s.split(':')[0] === 'id') ? base : [...base, 'id:asc']
+}
+
+function filtersOf(source: StrapiLlmsSource, extra?: Record<string, unknown>) {
+  return source.filters && extra ? { $and: [source.filters, extra] } : (extra ?? source.filters)
+}
+
+async function findEntries(
+  strapi: StrapiLike,
+  uid: string,
+  source: StrapiLlmsSource,
+  extra?: Record<string, unknown>,
+  page: { start?: number; limit?: number; segmented?: boolean } = {},
+) {
   return strapi.documents(uid).findMany({
     // Only published entries for draft & publish content types; ignored otherwise.
     status: 'published',
-    filters,
-    // Relations and media (author, cover image, FAQ components) for JSON-LD.
-    populate: '*',
-    limit: source.limit ?? 500,
-    sort: 'updatedAt:desc',
+    filters: filtersOf(source, extra),
+    // Media, components, dynamic zones and relations (author, cover image, FAQ) from the schema.
+    populate: populateOf(strapi, uid, source) as never,
+    start: page.start ?? 0,
+    limit: page.limit ?? source.limit ?? 500,
+    sort: sortOf(source, !!page.segmented),
   })
 }
 
+/** Published entries of a content type (before the per-entry public checks). */
+async function countEntries(strapi: StrapiLike, uid: string, source: StrapiLlmsSource): Promise<number> {
+  const service = strapi.documents(uid)
+  if (service.count) return service.count({ status: 'published', filters: filtersOf(source) })
+  let total = 0
+  for (;;) {
+    const batch = await service.findMany({ status: 'published', filters: filtersOf(source), fields: ['documentId'], start: total, limit: 1000 })
+    total += batch.length
+    if (batch.length < 1000) return total
+  }
+}
+
 function mapper(strapi: StrapiLike, llms: StrapiLlmsConfig, uid: string, source: StrapiLlmsSource) {
-  const name = strapi.contentType?.(uid)?.info?.pluralName ?? uid.split('.').pop() ?? uid
-  const mediaURL = llms.mediaURL ?? (strapi.config?.get<string>('server.url', '') || undefined)
-  return (entry: Record<string, any>) =>
-    toLlmsDocument(entry, { name, siteURL: llms.siteURL, source, markdown: richTextToMarkdown, mediaURL })
+  const options = mappingOptions(strapi, llms, uid, source)
+  return (entry: Record<string, any>) => toLlmsDocument(entry, options)
 }
 
 /** Published entries of one content type that the public may read, as llms documents. */
@@ -89,29 +138,95 @@ async function publicDocuments(
   access: PublicAccess,
   uid: string,
   extra?: Record<string, unknown>,
+  page?: { start?: number; limit?: number; segmented?: boolean },
+  listing = false,
 ): Promise<LlmsDocument[]> {
   const source = llms.contentTypes[uid]!
   const map = mapper(strapi, llms, uid, source)
   const docs: LlmsDocument[] = []
-  for (const entry of await findEntries(strapi, uid, source, extra)) {
+  for (const entry of await findEntries(strapi, uid, source, extra, page)) {
     const visible = await access.filter(uid, source, entry)
+    // `include` only shapes the lists; Markdown and JSON-LD of a page stay available.
+    if (listing && visible && !included(visible, source)) continue
     const mapped = visible && map(visible)
     if (mapped) docs.push(mapped)
   }
   return docs
 }
 
+export interface LlmsListing {
+  docs: LlmsDocument[]
+  /** Visible notes per section when a `limit` cut the list. */
+  notes: Record<string, string>
+}
+
 /**
- * Every published entry the public may read. llms.txt, llms-full.txt and the dashboard's coverage
+ * Every listed entry the public may read, read page by page (READ_BATCH per query) up to each content type's
+ * `limit`, filtered by `include`, without duplicate URLs. llms.txt, llms-full.txt and the dashboard coverage
  * all use this list, so they always agree.
  */
-export async function loadLlmsDocuments(strapi: StrapiLike, llms: StrapiLlmsConfig): Promise<LlmsDocument[]> {
+export async function loadLlmsListing(strapi: StrapiLike, llms: StrapiLlmsConfig): Promise<LlmsListing> {
   const access = await publicAccess(strapi, llms)
   const docs: LlmsDocument[] = []
-  for (const uid of Object.keys(llms.contentTypes)) {
-    if (access.allowed.has(uid)) docs.push(...(await publicDocuments(strapi, llms, access, uid)))
+  const notes: Record<string, string> = {}
+  const seen = new Set<string>()
+  for (const [uid, source] of Object.entries(llms.contentTypes)) {
+    if (!access.allowed.has(uid)) continue
+    const limit = source.limit ?? 500
+    let read = 0
+    while (read < limit) {
+      const size = Math.min(READ_BATCH, limit - read)
+      const batch = await findEntries(strapi, uid, source, undefined, { start: read, limit: size })
+      const map = mapper(strapi, llms, uid, source)
+      for (const entry of batch) {
+        const visible = await access.filter(uid, source, entry)
+        if (!visible || !included(visible, source)) continue
+        const mapped = map(visible)
+        if (!mapped || seen.has(mapped.url)) continue
+        seen.add(mapped.url)
+        docs.push(mapped)
+      }
+      read += batch.length
+      if (batch.length < size) break
+    }
+    if (read >= limit) {
+      const total = await countEntries(strapi, uid, source)
+      if (total > limit) notes[source.section ?? pluralName(strapi, uid)] = `Lists ${limit} of ${total} entries (limit ${limit}). Raise \`limit\` or turn on \`segments\` to list all.`
+    }
   }
-  return docs
+  return { docs, notes }
+}
+
+export async function loadLlmsDocuments(strapi: StrapiLike, llms: StrapiLlmsConfig): Promise<LlmsDocument[]> {
+  return (await loadLlmsListing(strapi, llms)).docs
+}
+
+/** Segment sources: one per readable content type, read one part at a time. */
+export async function segmentSources(strapi: StrapiLike, llms: StrapiLlmsConfig): Promise<SegmentSource[]> {
+  const access = await publicAccess(strapi, llms)
+  return Object.entries(llms.contentTypes)
+    .filter(([uid]) => access.allowed.has(uid))
+    .map(([uid, source]) => ({
+      key: segmentKey(pluralName(strapi, uid)),
+      section: source.section ?? pluralName(strapi, uid),
+      count: () => countEntries(strapi, uid, source),
+      page: (offset: number, limit: number) => publicDocuments(strapi, llms, access, uid, undefined, { start: offset, limit, segmented: true }, true),
+      featured: async () =>
+        typeof source.featured === 'string' ? publicDocuments(strapi, llms, access, uid, { [source.featured]: { $eq: true } }, { limit: 50 }, true) : [],
+    }))
+}
+
+/** The public state of one entry right now (null: not public), for change events. */
+export async function publicEntry(strapi: StrapiLike, llms: StrapiLlmsConfig, uid: string, documentId: string): Promise<LlmsDocument | null> {
+  if (!llms.contentTypes[uid]) return null
+  const access = await publicAccess(strapi, llms)
+  if (!access.allowed.has(uid)) return null
+  const [doc] = await publicDocuments(strapi, llms, access, uid, { documentId: { $eq: documentId } }, { limit: 1 })
+  return doc ?? null
+}
+
+export function llmsSite(llms: StrapiLlmsConfig) {
+  return { name: llms.name ?? llms.siteURL, description: llms.description, details: llms.details }
 }
 
 /**
@@ -151,15 +266,17 @@ async function loadHits(strapi: StrapiLike, days: number): Promise<StatsHit[]> {
 }
 
 /** `Cache-Control` for public output. Errors are cached briefly so a newly published entry shows up soon. */
-export function cacheControl(maxAge: number | undefined, status: number): string {
+export function cacheControl(maxAge: number | undefined, status: number, notFoundMaxAge?: number): string {
   const age = maxAge ?? 300
   if (age <= 0) return 'no-store'
-  return `public, max-age=${status === 200 ? age : Math.min(age, 60)}`
+  if (status === 200) return `public, max-age=${age}`
+  const short = notFoundMaxAge ?? Math.min(age, 60)
+  return short <= 0 ? 'no-store' : `public, max-age=${Math.min(short, age)}`
 }
 
-function sendText(ctx: KoaContextLike, body: string, type = 'text/plain', status = 200, maxAge?: number) {
+function sendText(ctx: KoaContextLike, body: string, type = 'text/plain', status = 200, maxAge?: number, notFoundMaxAge?: number) {
   ctx.set?.('Content-Type', `${type}; charset=utf-8`)
-  ctx.set?.('Cache-Control', cacheControl(maxAge, status))
+  ctx.set?.('Cache-Control', cacheControl(maxAge, status, notFoundMaxAge))
   ctx.status = status
   ctx.body = body
 }
@@ -169,7 +286,29 @@ function pathQuery(ctx: KoaContextLike): string | null {
   return typeof path === 'string' && path.startsWith('/') ? path : null
 }
 
+function changeDeps(strapi: StrapiLike): ChangeDeps {
+  return {
+    llms: () => getConfig(strapi).llms,
+    invalidation: () => getConfig(strapi).invalidation,
+    publicEntry: (uid, documentId) => publicEntry(strapi, getConfig(strapi).llms!, uid, documentId),
+  }
+}
+
+function dataContext(strapi: StrapiLike): DataContext {
+  const cfg = getConfig(strapi)
+  return {
+    retention: cfg.retention,
+    datasets: {
+      hits: { uid: CRAWLER_HIT_UID, time: 'timestamp' },
+      ...(cfg.referrals?.enabled ? { referrals: { uid: AI_REFERRAL_UID, time: 'timestamp' } } : {}),
+      ...(invalidationActive(cfg.invalidation) ? { invalidations: { uid: INVALIDATION_UID, time: 'createdAt' } } : {}),
+    },
+  }
+}
+
 export const controllers = {
+  data: ({ strapi }: { strapi: StrapiLike }) => dataControllers(strapi, () => dataContext(strapi)),
+  invalidations: ({ strapi }: { strapi: StrapiLike }) => invalidationControllers(strapi, changeDeps(strapi)),
   ingest: ({ strapi }: { strapi: StrapiLike }) => ({
     async ingest(ctx: KoaContextLike) {
       const cfg = getConfig(strapi)
@@ -184,6 +323,7 @@ export const controllers = {
         secret: cfg.secret || undefined,
         verifier: cfg.verifyIPs ? (verifier ??= createIPVerifier()) : undefined,
         storeSpoofed: cfg.storeSpoofed,
+        bots: cfg.bots,
         probes: setupState.probes,
         log: setupState.log,
         store: {
@@ -205,12 +345,27 @@ export const controllers = {
         ctx.body = 'llms.txt is not configured\n'
         return
       }
-      const docs = await loadLlmsDocuments(strapi, llms)
-      const site = { name: llms.name ?? llms.siteURL, description: llms.description, details: llms.details }
-      const body = full ? buildLlmsFullTxt(site, docs) : buildLlmsTxt(site, docs, { markdownLinks: llms.markdownLinks })
+      if (resolvedSegments(llms.segments, llms.siteURL).enabled) {
+        const index = await buildSegmentIndex(llmsSite(llms), await segmentSources(strapi, llms), llms.segments, llms.siteURL, { full, markdownLinks: llms.markdownLinks })
+        return sendText(ctx, index, 'text/plain', 200, llms.cacheMaxAge)
+      }
+      const { docs, notes } = await loadLlmsListing(strapi, llms)
+      const body = full
+        ? buildLlmsFullTxt(llmsSite(llms), docs, { maxBytes: llms.fullMaxBytes, notes: Object.entries(notes).map(([k, v]) => `${k}: ${v}`) })
+        : buildLlmsTxt(llmsSite(llms), docs, { markdownLinks: llms.markdownLinks, sectionNotes: notes })
       sendText(ctx, body, 'text/plain', 200, llms.cacheMaxAge)
     }
+    // Part files of segmented llms.txt: `/api/geo/llms/<plural name>-<n>.txt` and `…-<n>-full.txt`.
+    const part = async (ctx: KoaContextLike & { params?: Record<string, string> }) => {
+      const { llms } = getConfig(strapi)
+      const parsed = llms && resolvedSegments(llms.segments, llms.siteURL).enabled ? parseSegmentFile(String(ctx.params?.file ?? '')) : null
+      const source = parsed && (await segmentSources(strapi, llms!)).find((s) => s.key === parsed.key)
+      const body = parsed && source ? await buildSegment(llmsSite(llms!), source, parsed.part, parsed.full, llms!.segments, llms!.siteURL, { markdownLinks: llms!.markdownLinks }) : null
+      if (body === null) return sendText(ctx, 'Not found\n', 'text/plain', 404, llms?.cacheMaxAge, llms?.notFoundMaxAge)
+      sendText(ctx, body, 'text/plain', 200, llms!.cacheMaxAge)
+    }
     return {
+      llmsPart: part,
       llmsTxt: (ctx: KoaContextLike) => render(ctx, false),
       llmsFullTxt: (ctx: KoaContextLike) => render(ctx, true),
     }
@@ -226,7 +381,7 @@ export const controllers = {
       }
       const doc = await loadDocumentByPath(strapi, llms, path)
       // Same 404 whether the entry is missing, a draft or not public, so its existence isn't revealed.
-      if (!doc) sendText(ctx, 'Not found\n', 'text/plain', 404, llms.cacheMaxAge)
+      if (!doc) sendText(ctx, 'Not found\n', 'text/plain', 404, llms.cacheMaxAge, llms.notFoundMaxAge)
       return doc ? { llms, doc } : null
     }
     return {
@@ -238,11 +393,10 @@ export const controllers = {
         const found = await find(ctx)
         if (!found) return
         const { llms, doc } = found
-        const data = buildJsonLd(
-          { name: llms.name ?? llms.siteURL, url: llms.siteURL, logo: llms.logo, language: llms.language },
-          doc,
-        )
-        if (!data) return sendText(ctx, 'Not found\n', 'text/plain', 404, llms.cacheMaxAge)
+        const built = buildJsonLd(jsonLdSite(llms), doc)
+        const omit = parseOmit(typeof ctx.query?.omit === 'string' ? ctx.query.omit : null, llms.hostManaged)
+        const data = built && omit.length ? omitJsonLdTypes(built, omit) : built
+        if (!data) return sendText(ctx, 'Not found\n', 'text/plain', 404, llms.cacheMaxAge, llms.notFoundMaxAge)
         sendText(ctx, JSON.stringify(data), 'application/ld+json', 200, llms.cacheMaxAge)
       },
     }
@@ -291,7 +445,7 @@ export const controllers = {
         llms ? loadLlmsDocuments(strapi, llms).then((docs) => docs.map((d) => d.url)) : Promise.resolve(undefined),
       ])
       ctx.status = 200
-      ctx.body = summarizeHits(hits, { days, contentPaths })
+      ctx.body = { ...summarizeHits(hits, { days, contentPaths }), ...(await hitsHistoryIncomplete(strapi, windowStart(days))) }
     },
   }),
 }
@@ -312,6 +466,7 @@ export const routes = {
       publicRoute('POST', '/referrals', 'referrals.ingest'),
       publicRoute('GET', '/llms.txt', 'llms.llmsTxt'),
       publicRoute('GET', '/llms-full.txt', 'llms.llmsFullTxt'),
+      publicRoute('GET', '/llms/:file', 'llms.llmsPart'),
       publicRoute('GET', '/markdown', 'page.markdown'),
       publicRoute('GET', '/jsonld', 'page.jsonLd'),
     ],
@@ -326,6 +481,12 @@ export const routes = {
       { method: 'POST', path: '/setup/test', handler: 'setup.test', config: { policies: ['admin::isAuthenticatedAdmin'] } },
       { method: 'GET', path: '/document-stats', handler: 'setup.documentStats', config: { policies: ['admin::isAuthenticatedAdmin'] } },
       { method: 'GET', path: '/evidence', handler: 'referrals.evidence', config: { policies: ['admin::isAuthenticatedAdmin'] } },
+      { method: 'GET', path: '/data', handler: 'data.report', config: { policies: ['admin::isAuthenticatedAdmin'] } },
+      { method: 'POST', path: '/data/cleanup', handler: 'data.cleanup', config: { policies: ['admin::isAuthenticatedAdmin'] } },
+      { method: 'GET', path: '/data/export', handler: 'data.export', config: { policies: ['admin::isAuthenticatedAdmin'] } },
+      { method: 'GET', path: '/invalidations', handler: 'invalidations.list', config: { policies: ['admin::isAuthenticatedAdmin'] } },
+      { method: 'POST', path: '/invalidations/retry', handler: 'invalidations.retry', config: { policies: ['admin::isAuthenticatedAdmin'] } },
+      { method: 'POST', path: '/invalidations/flush', handler: 'invalidations.flush', config: { policies: ['admin::isAuthenticatedAdmin'] } },
     ],
   },
 }
@@ -337,14 +498,20 @@ export default {
     'crawler-hit': { schema: crawlerHitSchema },
     'ai-referral': { schema: aiReferralSchema },
     citation: { schema: citationSchema },
+    invalidation: { schema: invalidationSchema },
+    job: { schema: jobSchema },
   },
   controllers,
   routes,
   register({ strapi }: { strapi: StrapiLike & { documents: { use?(mw: unknown): unknown } } }) {
     ;(strapi.documents as { use?(mw: unknown): unknown }).use?.(citationMiddleware(strapi))
+    // Cache notices: does nothing unless `invalidation.targets` is set.
+    ;(strapi.documents as { use?(mw: unknown): unknown }).use?.(changeMiddleware(strapi, changeDeps(strapi)))
   },
   bootstrap({ strapi }: { strapi: StrapiLike }) {
     const cfg = getConfig(strapi)
+    if (cfg.llms && invalidationActive(cfg.invalidation)) subscribePermissionChanges(strapi as never, changeDeps(strapi))
+    startAutoCleanup(strapi, dataContext(strapi))
     if (!cfg.secret) {
       strapi.log.warn('[geo] No secret configured: anyone can post crawler hits to /api/geo/ingest.')
       if (cfg.referrals?.enabled) strapi.log.warn('[geo] `referrals` is enabled but no secret is configured, so referral reports are refused.')
