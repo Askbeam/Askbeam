@@ -1,6 +1,9 @@
 import {
   GEO_SECRET_HEADER,
+  IngestLog,
+  ProbeRegistry,
   createIPVerifier,
+  findProbeInBody,
   ingestHits,
   summarizeHits,
   windowStart,
@@ -10,6 +13,18 @@ import {
 } from '@garus-ltd/geo-core'
 import type { CollectionConfig, Config, Endpoint, Plugin } from 'payload'
 import { CRAWLER_HITS_SLUG, crawlerHitsCollection } from './collection.js'
+import {
+  AI_REFERRALS_SLUG,
+  CITATIONS_SLUG,
+  citationScreenshotsCollection,
+  citationsCollection,
+  evidenceEndpoints,
+  referralsCollection,
+  type CitationOptions,
+  type ReferralOptions,
+} from './evidence.js'
+import { inspectPayloadDocument } from './inspect.js'
+import { documentStats, runSetupTest, setupReport, type DiagnosticsOptions, type SetupContext } from './setup.js'
 import {
   loadDocumentByPath,
   loadLlmsDocuments,
@@ -37,16 +52,41 @@ export interface GeoPluginOptions {
   dashboard?: boolean
   /** Keep the collection and schema but stop accepting hits. Default true. */
   enabled?: boolean
+  /**
+   * Add a read-only GEO check panel to the sidebar of every collection in `llms.collections`. Default true.
+   * It stores nothing and never changes the document.
+   */
+  editorPanel?: boolean
+  /** Setup status view: connectivity test limits. */
+  diagnostics?: DiagnosticsOptions
+  /**
+   * AI referral visits: browser visits from an AI assistant, reported by withGeo({ referrals }). Off by default;
+   * enabling it adds the `geo-ai-referrals` collection (a migration on SQL databases).
+   */
+  referrals?: ReferralOptions
+  /**
+   * Citation evidence entered by hand. Off by default; enabling it adds the `geo-citations` collection
+   * (and `geo-citation-screenshots` unless `screenshots: false`), which needs a migration on SQL databases.
+   */
+  citations?: CitationOptions
 }
 
+export { AI_REFERRALS_SLUG, CITATIONS_SLUG, type CitationOptions, type ReferralOptions }
 export { CRAWLER_HITS_SLUG, crawlerHitsCollection, loadDocumentByPath, loadLlmsDocuments, type LlmsOptions, type PayloadLlmsSource }
 
 const MAX_STATS_HITS = 100_000
 
-function text(body: string, status = 200, type = 'text/plain'): Response {
+/** `Cache-Control` for public output. Errors are cached briefly so a newly published page shows up soon. */
+export function cacheControl(maxAge: number | undefined, status: number): string {
+  const age = maxAge ?? 300
+  if (age <= 0) return 'no-store'
+  return `public, max-age=${status === 200 ? age : Math.min(age, 60)}`
+}
+
+function text(body: string, status = 200, type = 'text/plain', maxAge?: number): Response {
   return new Response(body, {
     status,
-    headers: { 'content-type': `${type}; charset=utf-8`, 'cache-control': `public, max-age=${status === 200 ? 300 : 60}` },
+    headers: { 'content-type': `${type}; charset=utf-8`, 'cache-control': cacheControl(maxAge, status) },
   })
 }
 
@@ -60,19 +100,66 @@ export const geoPlugin =
   (config: Config): Config => {
     const verifyIPs = options.verifyIPs ?? true
     const verifier = verifyIPs ? createIPVerifier(verifyIPs === true ? {} : verifyIPs) : undefined
+    const probes = new ProbeRegistry()
+    const ingestLog = new IngestLog()
     const collection = crawlerHitsCollection(options.collection)
-    const collections = [...(config.collections ?? []), collection]
+    const apiRoute = config.routes?.api ?? '/api'
+    const editorPanel = options.llms && options.editorPanel !== false
+    const collections = [
+      ...(config.collections ?? []).map((c) =>
+        editorPanel && options.llms!.collections[c.slug]
+          ? {
+              ...c,
+              fields: [
+                ...c.fields,
+                {
+                  name: 'geoPanel',
+                  type: 'ui' as const,
+                  admin: {
+                    position: 'sidebar' as const,
+                    components: {
+                      Field: {
+                        path: 'payload-plugin-geo/client#GeoEditPanel',
+                        clientProps: {
+                          inspectURL: `${config.serverURL ?? ''}${apiRoute}/geo/inspect`,
+                          statsURL: `${config.serverURL ?? ''}${apiRoute}/geo/document-stats`,
+                          collection: c.slug,
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            }
+          : c,
+      ),
+      collection,
+    ]
+    const referralsOn = options.referrals?.enabled === true
+    const citationsOn = options.citations?.enabled === true
+    if (referralsOn) collections.push(referralsCollection(options.referrals?.collection))
+    if (citationsOn) {
+      const screenshots = options.citations?.screenshots !== false
+      if (screenshots) collections.push(citationScreenshotsCollection())
+      collections.push(citationsCollection({ usersSlug: config.admin?.user ?? 'users', screenshots, overrides: options.citations?.collection }))
+    }
 
     const ingestEndpoint: Endpoint = {
       path: options.ingestPath ?? '/geo/ingest',
       method: 'post',
       handler: async (req) => {
-        if (options.enabled === false) return Response.json({ ok: false, error: 'disabled' }, { status: 503 })
         let body: unknown
         try {
           body = await req.json?.()
         } catch {
+          if (options.enabled === false) return Response.json({ ok: false, error: 'disabled' }, { status: 503 })
+          ingestLog.record({ at: new Date().toISOString(), status: 400, error: 'invalid json' })
           return Response.json({ ok: false, error: 'invalid json' }, { status: 400 })
+        }
+        if (options.enabled === false) {
+          const probe = findProbeInBody(body, probes)
+          if (probe) probes.record(probe.token, 'disabled', probe)
+          return Response.json({ ok: false, error: 'disabled' }, { status: 503 })
         }
         const store: HitStore = {
           async save(hit) {
@@ -84,6 +171,8 @@ export const geoPlugin =
           verifier,
           storeSpoofed: options.storeSpoofed,
           store,
+          probes,
+          log: ingestLog,
         })
         return Response.json(result.body, { status: result.status })
       },
@@ -111,7 +200,28 @@ export const geoPlugin =
       },
     }
 
-    const endpoints: Endpoint[] = [ingestEndpoint, statsEndpoint]
+    const setupContext: SetupContext = {
+      llms: options.llms,
+      collections,
+      hitsSlug: collection.slug,
+      serverURL: config.serverURL,
+      secretConfigured: !!options.secret,
+      ingestEnabled: options.enabled !== false,
+      verifyIPs: !!verifyIPs,
+      referralsEnabled: referralsOn,
+      probes,
+      log: ingestLog,
+      diagnostics: options.diagnostics,
+    }
+    const endpoints: Endpoint[] = [
+      ingestEndpoint,
+      statsEndpoint,
+      // Admin only: setup status, the explicit connectivity test, and per-document visits.
+      { path: '/geo/setup', method: 'get', handler: (req) => setupReport(req, setupContext) },
+      { path: '/geo/setup/test', method: 'post', handler: (req) => runSetupTest(req, setupContext) },
+      { path: '/geo/document-stats', method: 'get', handler: (req) => documentStats(req, setupContext) },
+      ...evidenceEndpoints({ referrals: options.referrals, citations: options.citations, secret: options.secret, probes, adminRoute: config.routes?.admin ?? '/admin' }),
+    ]
     if (options.llms) {
       const llms = options.llms
       for (const full of [false, true]) {
@@ -119,9 +229,24 @@ export const geoPlugin =
           path: full ? '/geo/llms-full.txt' : '/geo/llms.txt',
           method: 'get',
           handler: async (req) =>
-            text(renderLlms(llms, await loadLlmsDocuments(req.payload, llms, collections, config.serverURL), full)),
+            text(renderLlms(llms, await loadLlmsDocuments(req.payload, llms, collections, config.serverURL), full), 200, 'text/plain', llms.cacheMaxAge),
         })
       }
+      // Editor checks and previews of the current (possibly unsaved) edits: logged-in users only, never cached.
+      endpoints.push({
+        path: '/geo/inspect',
+        method: 'post',
+        handler: async (req) => {
+          let body: unknown
+          try {
+            body = await req.json?.()
+          } catch {
+            return Response.json({ error: 'invalid json' }, { status: 400, headers: { 'cache-control': 'private, no-store' } })
+          }
+          const result = await inspectPayloadDocument(req, { llms, collections, serverURL: config.serverURL, apiRoute }, body)
+          return Response.json(result.body, { status: result.status, headers: { 'cache-control': 'private, no-store' } })
+        },
+      })
       // Per-page Markdown and JSON-LD: `?path=/blog/post` (the frontend path, without `.md`).
       endpoints.push(
         {
@@ -131,7 +256,7 @@ export const geoPlugin =
             const path = pathParam(req)
             if (!path) return text('`path` query parameter is required\n', 400)
             const doc = await loadDocumentByPath(req.payload, llms, collections, path, config.serverURL)
-            return doc ? text(renderMarkdown(doc), 200, 'text/markdown') : text('Not found\n', 404)
+            return doc ? text(renderMarkdown(doc), 200, 'text/markdown', llms.cacheMaxAge) : text('Not found\n', 404, 'text/plain', llms.cacheMaxAge)
           },
         },
         {
@@ -142,9 +267,9 @@ export const geoPlugin =
             if (!path) return Response.json({ error: '`path` query parameter is required' }, { status: 400 })
             const doc = await loadDocumentByPath(req.payload, llms, collections, path, config.serverURL)
             const data = doc ? renderJsonLd(llms, doc) : null
-            if (!data) return Response.json({ error: 'not found' }, { status: 404, headers: { 'cache-control': 'public, max-age=60' } })
+            if (!data) return Response.json({ error: 'not found' }, { status: 404, headers: { 'cache-control': cacheControl(llms.cacheMaxAge, 404) } })
             return new Response(JSON.stringify(data), {
-              headers: { 'content-type': 'application/ld+json; charset=utf-8', 'cache-control': 'public, max-age=300' },
+              headers: { 'content-type': 'application/ld+json; charset=utf-8', 'cache-control': cacheControl(llms.cacheMaxAge, 200) },
             })
           },
         },
@@ -152,11 +277,18 @@ export const geoPlugin =
     }
 
     if (options.dashboard !== false) {
-      const apiRoute = `${config.serverURL ?? ''}${config.routes?.api ?? '/api'}`
+      const statsBase = `${config.serverURL ?? ''}${apiRoute}`
       const hitsHref = `${config.routes?.admin ?? '/admin'}/collections/${collection.slug}`
       const component = (compact: boolean) => ({
         path: 'payload-plugin-geo/client#GeoDashboardClient',
-        clientProps: { statsURL: `${apiRoute}/geo/stats`, compact, moreHref: hitsHref, hitsHref },
+        clientProps: {
+          statsURL: `${statsBase}/geo/stats`,
+          setupURL: compact ? undefined : `${statsBase}/geo/setup`,
+          evidenceURL: compact ? undefined : `${statsBase}/geo/evidence`,
+          compact,
+          moreHref: hitsHref,
+          hitsHref,
+        },
       })
       collection.admin = {
         ...collection.admin,
@@ -185,6 +317,9 @@ export const geoPlugin =
       async onInit(payload) {
         if (options.enabled !== false && !options.secret) {
           payload.logger.warn('[geo] No secret configured: anyone can post crawler hits to the ingest endpoint. Set `secret` in geoPlugin().')
+        }
+        if (referralsOn && !options.secret) {
+          payload.logger.warn('[geo] `referrals` is enabled but no secret is configured, so referral reports are refused. Set `secret` in geoPlugin().')
         }
         await onInit?.(payload)
       },

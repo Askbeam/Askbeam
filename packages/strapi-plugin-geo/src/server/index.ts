@@ -1,5 +1,8 @@
 import {
   GEO_SECRET_HEADER,
+  IngestLog,
+  ProbeRegistry,
+  findProbeInBody,
   buildJsonLd,
   buildLlmsFullTxt,
   buildLlmsTxt,
@@ -16,15 +19,25 @@ import {
   type LlmsDocument,
   type StatsHit,
 } from '@garus-ltd/geo-core'
+import { publicAccess, type PublicAccess } from './access'
 import config, { type GeoStrapiConfig, type StrapiLlmsConfig } from './config'
+import { AI_REFERRAL_UID, CITATION_UID, citationMiddleware, evidenceReport, ingestReferralReport } from './evidence'
+import { inspectStrapiEntry } from './inspect'
+import { documentStats, runSetupTest, setupReport, type SetupState } from './setup'
+import aiReferralSchema from './content-types/ai-referral/schema'
+import citationSchema from './content-types/citation/schema'
 import crawlerHitSchema from './content-types/crawler-hit/schema'
 import type { KoaContextLike, StrapiLike } from './types'
 
+export { checkFindRoute, publicAccess, type PublicAccess } from './access'
+export { AI_REFERRAL_UID, CITATION_UID } from './evidence'
 export const CRAWLER_HIT_UID = 'plugin::geo.crawler-hit'
 const PAGE_SIZE = 1000
 const MAX_STATS_HITS = 100_000
 
 let verifier: IPVerifier | undefined
+/** Diagnostic probe tokens and recent ingest results, per process. */
+const setupState: SetupState = { probes: new ProbeRegistry(), log: new IngestLog() }
 
 function getConfig(strapi: StrapiLike): GeoStrapiConfig {
   const plugin = strapi.plugin('geo')
@@ -34,48 +47,19 @@ function getConfig(strapi: StrapiLike): GeoStrapiConfig {
     storeSpoofed: plugin.config('storeSpoofed', true),
     enabled: plugin.config('enabled', true),
     llms: plugin.config('llms', null),
+    diagnostics: plugin.config('diagnostics', {}),
+    referrals: plugin.config('referrals', {}),
+    citations: plugin.config('citations', {}),
   }
 }
+
+
 
 type StrapiLlmsSource = StrapiLlmsConfig['contentTypes'][string]
 
-const PUBLIC_ROLE_UID = 'plugin::users-permissions.role'
-const warned = new Set<string>()
-
-function warnOnce(strapi: StrapiLike, message: string) {
-  if (warned.has(message)) return
-  warned.add(message)
-  strapi.log.warn(message)
-}
-
-/**
- * Content types from the config that the Public role may read. Without the Users & Permissions plugin
- * the REST API is closed to anonymous visitors, so nothing is public.
- */
+/** Content types from the config whose entries the anonymous public may read. */
 export async function publicContentTypes(strapi: StrapiLike, llms: StrapiLlmsConfig): Promise<Set<string>> {
-  const uids = Object.keys(llms.contentTypes)
-  if (llms.publicOnly === false) return new Set(uids)
-  let role: Record<string, any> | null = null
-  if (strapi.db && strapi.contentType?.(PUBLIC_ROLE_UID)) {
-    role = await strapi.db.query(PUBLIC_ROLE_UID).findOne({ where: { type: 'public' }, populate: ['permissions'] })
-  }
-  if (!role) {
-    warnOnce(strapi, '[geo] No Users & Permissions Public role found, so llms.txt lists nothing. Set `llms.publicOnly: false` to serve the configured content types anyway.')
-    return new Set()
-  }
-  const actions = new Set<string>((role.permissions ?? []).map((p: { action?: string }) => p.action))
-  const allowed = new Set(uids.filter((uid) => actions.has(`${uid}.find`) || actions.has(`${uid}.findOne`)))
-  for (const uid of uids) {
-    if (!allowed.has(uid)) {
-      warnOnce(strapi, `[geo] ${uid} is skipped: the Public role can't read it. Allow find/findOne for Public, or set \`llms.publicOnly: false\`.`)
-    }
-  }
-  return allowed
-}
-
-async function sources(strapi: StrapiLike, llms: StrapiLlmsConfig) {
-  const allowed = await publicContentTypes(strapi, llms)
-  return Object.entries(llms.contentTypes).filter(([uid]) => allowed.has(uid))
+  return (await publicAccess(strapi, llms)).allowed
 }
 
 async function findEntries(strapi: StrapiLike, uid: string, source: StrapiLlmsSource, extra?: Record<string, unknown>) {
@@ -98,30 +82,52 @@ function mapper(strapi: StrapiLike, llms: StrapiLlmsConfig, uid: string, source:
     toLlmsDocument(entry, { name, siteURL: llms.siteURL, source, markdown: richTextToMarkdown, mediaURL })
 }
 
-export async function loadLlmsDocuments(strapi: StrapiLike, llms: StrapiLlmsConfig): Promise<LlmsDocument[]> {
+/** Published entries of one content type that the public may read, as llms documents. */
+async function publicDocuments(
+  strapi: StrapiLike,
+  llms: StrapiLlmsConfig,
+  access: PublicAccess,
+  uid: string,
+  extra?: Record<string, unknown>,
+): Promise<LlmsDocument[]> {
+  const source = llms.contentTypes[uid]!
+  const map = mapper(strapi, llms, uid, source)
   const docs: LlmsDocument[] = []
-  for (const [uid, source] of await sources(strapi, llms)) {
-    const map = mapper(strapi, llms, uid, source)
-    for (const entry of await findEntries(strapi, uid, source)) {
-      const mapped = map(entry)
-      if (mapped) docs.push(mapped)
-    }
+  for (const entry of await findEntries(strapi, uid, source, extra)) {
+    const visible = await access.filter(uid, source, entry)
+    const mapped = visible && map(visible)
+    if (mapped) docs.push(mapped)
   }
   return docs
 }
 
 /**
- * The published entry served at a frontend path. Content types with a `slug` attribute are
- * queried by the path's last segment; others are scanned.
+ * Every published entry the public may read. llms.txt, llms-full.txt and the dashboard's coverage
+ * all use this list, so they always agree.
+ */
+export async function loadLlmsDocuments(strapi: StrapiLike, llms: StrapiLlmsConfig): Promise<LlmsDocument[]> {
+  const access = await publicAccess(strapi, llms)
+  const docs: LlmsDocument[] = []
+  for (const uid of Object.keys(llms.contentTypes)) {
+    if (access.allowed.has(uid)) docs.push(...(await publicDocuments(strapi, llms, access, uid)))
+  }
+  return docs
+}
+
+/**
+ * The published, publicly readable entry served at a frontend path. Content types with a `slug`
+ * attribute are queried by the path's last segment; others are scanned. The full path must match the
+ * entry's URL, so the same slug in two content types never resolves to the wrong one.
  */
 export async function loadDocumentByPath(strapi: StrapiLike, llms: StrapiLlmsConfig, path: string): Promise<LlmsDocument | undefined> {
   const slug = lastSegment(path)
-  for (const [uid, source] of await sources(strapi, llms)) {
+  const access = await publicAccess(strapi, llms)
+  for (const uid of Object.keys(llms.contentTypes)) {
+    if (!access.allowed.has(uid)) continue
     const bySlug = !!strapi.contentType?.(uid)?.attributes?.slug
     if (bySlug && !slug) continue
-    const map = mapper(strapi, llms, uid, source)
-    const entries = await findEntries(strapi, uid, source, bySlug ? { slug: { $eq: slug } } : undefined)
-    const match = findDocumentByPath(entries.map(map).filter((d): d is LlmsDocument => !!d), path)
+    const docs = await publicDocuments(strapi, llms, access, uid, bySlug ? { slug: { $eq: slug } } : undefined)
+    const match = findDocumentByPath(docs, path)
     if (match) return match
   }
   return undefined
@@ -144,9 +150,16 @@ async function loadHits(strapi: StrapiLike, days: number): Promise<StatsHit[]> {
   return hits
 }
 
-function sendText(ctx: KoaContextLike, body: string, type = 'text/plain', status = 200) {
+/** `Cache-Control` for public output. Errors are cached briefly so a newly published entry shows up soon. */
+export function cacheControl(maxAge: number | undefined, status: number): string {
+  const age = maxAge ?? 300
+  if (age <= 0) return 'no-store'
+  return `public, max-age=${status === 200 ? age : Math.min(age, 60)}`
+}
+
+function sendText(ctx: KoaContextLike, body: string, type = 'text/plain', status = 200, maxAge?: number) {
   ctx.set?.('Content-Type', `${type}; charset=utf-8`)
-  ctx.set?.('Cache-Control', `public, max-age=${status === 200 ? 300 : 60}`)
+  ctx.set?.('Cache-Control', cacheControl(maxAge, status))
   ctx.status = status
   ctx.body = body
 }
@@ -161,6 +174,8 @@ export const controllers = {
     async ingest(ctx: KoaContextLike) {
       const cfg = getConfig(strapi)
       if (!cfg.enabled) {
+        const probe = findProbeInBody(ctx.request.body, setupState.probes)
+        if (probe) setupState.probes.record(probe.token, 'disabled', probe)
         ctx.status = 503
         ctx.body = { ok: false, error: 'disabled' }
         return
@@ -169,6 +184,8 @@ export const controllers = {
         secret: cfg.secret || undefined,
         verifier: cfg.verifyIPs ? (verifier ??= createIPVerifier()) : undefined,
         storeSpoofed: cfg.storeSpoofed,
+        probes: setupState.probes,
+        log: setupState.log,
         store: {
           async save(hit) {
             await strapi.documents(CRAWLER_HIT_UID).create({ data: { ...hit } })
@@ -190,7 +207,8 @@ export const controllers = {
       }
       const docs = await loadLlmsDocuments(strapi, llms)
       const site = { name: llms.name ?? llms.siteURL, description: llms.description, details: llms.details }
-      sendText(ctx, full ? buildLlmsFullTxt(site, docs) : buildLlmsTxt(site, docs, { markdownLinks: llms.markdownLinks }))
+      const body = full ? buildLlmsFullTxt(site, docs) : buildLlmsTxt(site, docs, { markdownLinks: llms.markdownLinks })
+      sendText(ctx, body, 'text/plain', 200, llms.cacheMaxAge)
     }
     return {
       llmsTxt: (ctx: KoaContextLike) => render(ctx, false),
@@ -207,13 +225,14 @@ export const controllers = {
         return null
       }
       const doc = await loadDocumentByPath(strapi, llms, path)
-      if (!doc) sendText(ctx, 'Not found\n', 'text/plain', 404)
+      // Same 404 whether the entry is missing, a draft or not public, so its existence isn't revealed.
+      if (!doc) sendText(ctx, 'Not found\n', 'text/plain', 404, llms.cacheMaxAge)
       return doc ? { llms, doc } : null
     }
     return {
       async markdown(ctx: KoaContextLike) {
         const found = await find(ctx)
-        if (found) sendText(ctx, documentMarkdown(found.doc), 'text/markdown')
+        if (found) sendText(ctx, documentMarkdown(found.doc), 'text/markdown', 200, found.llms.cacheMaxAge)
       },
       async jsonLd(ctx: KoaContextLike) {
         const found = await find(ctx)
@@ -223,11 +242,45 @@ export const controllers = {
           { name: llms.name ?? llms.siteURL, url: llms.siteURL, logo: llms.logo, language: llms.language },
           doc,
         )
-        if (!data) return sendText(ctx, 'Not found\n', 'text/plain', 404)
-        sendText(ctx, JSON.stringify(data), 'application/ld+json')
+        if (!data) return sendText(ctx, 'Not found\n', 'text/plain', 404, llms.cacheMaxAge)
+        sendText(ctx, JSON.stringify(data), 'application/ld+json', 200, llms.cacheMaxAge)
       },
     }
   },
+
+  editor: ({ strapi }: { strapi: StrapiLike }) => ({
+    /** Which content types get the edit view panel. Admin only. */
+    async config(ctx: KoaContextLike) {
+      const { llms } = getConfig(strapi)
+      ctx.set?.('Cache-Control', 'private, no-store')
+      ctx.status = 200
+      ctx.body = { contentTypes: llms && llms.editorPanel !== false ? Object.keys(llms.contentTypes) : [] }
+    },
+    /** Checks and previews of the entry being edited (current unsaved values). Admin only, never cached. */
+    async inspect(ctx: KoaContextLike) {
+      const { llms } = getConfig(strapi)
+      ctx.set?.('Cache-Control', 'private, no-store')
+      if (!llms) {
+        ctx.status = 404
+        ctx.body = { error: 'llms is not configured' }
+        return
+      }
+      const result = await inspectStrapiEntry(strapi, llms, ctx, ctx.request.body)
+      ctx.status = result.status
+      ctx.body = result.body
+    },
+  }),
+
+  referrals: ({ strapi }: { strapi: StrapiLike }) => ({
+    ingest: (ctx: KoaContextLike) => ingestReferralReport(strapi, ctx, getConfig(strapi), setupState.probes),
+    evidence: (ctx: KoaContextLike) => evidenceReport(strapi, ctx, getConfig(strapi), ''),
+  }),
+
+  setup: ({ strapi }: { strapi: StrapiLike }) => ({
+    report: (ctx: KoaContextLike) => setupReport(strapi, getConfig(strapi), setupState, CRAWLER_HIT_UID, ctx),
+    test: (ctx: KoaContextLike) => runSetupTest(strapi, getConfig(strapi), setupState, CRAWLER_HIT_UID, ctx),
+    documentStats: (ctx: KoaContextLike) => documentStats(strapi, getConfig(strapi), CRAWLER_HIT_UID, ctx),
+  }),
 
   stats: ({ strapi }: { strapi: StrapiLike }) => ({
     async stats(ctx: KoaContextLike) {
@@ -256,6 +309,7 @@ export const routes = {
     type: 'content-api',
     routes: [
       publicRoute('POST', '/ingest', 'ingest.ingest'),
+      publicRoute('POST', '/referrals', 'referrals.ingest'),
       publicRoute('GET', '/llms.txt', 'llms.llmsTxt'),
       publicRoute('GET', '/llms-full.txt', 'llms.llmsFullTxt'),
       publicRoute('GET', '/markdown', 'page.markdown'),
@@ -266,19 +320,34 @@ export const routes = {
     type: 'admin',
     routes: [
       { method: 'GET', path: '/stats', handler: 'stats.stats', config: { policies: ['admin::isAuthenticatedAdmin'] } },
+      { method: 'GET', path: '/editor-config', handler: 'editor.config', config: { policies: ['admin::isAuthenticatedAdmin'] } },
+      { method: 'POST', path: '/inspect', handler: 'editor.inspect', config: { policies: ['admin::isAuthenticatedAdmin'] } },
+      { method: 'GET', path: '/setup', handler: 'setup.report', config: { policies: ['admin::isAuthenticatedAdmin'] } },
+      { method: 'POST', path: '/setup/test', handler: 'setup.test', config: { policies: ['admin::isAuthenticatedAdmin'] } },
+      { method: 'GET', path: '/document-stats', handler: 'setup.documentStats', config: { policies: ['admin::isAuthenticatedAdmin'] } },
+      { method: 'GET', path: '/evidence', handler: 'referrals.evidence', config: { policies: ['admin::isAuthenticatedAdmin'] } },
     ],
   },
 }
 
 export default {
   config,
-  contentTypes: { 'crawler-hit': { schema: crawlerHitSchema } },
+  // Always registered, so Strapi creates the tables; nothing is written to them unless the feature is enabled.
+  contentTypes: {
+    'crawler-hit': { schema: crawlerHitSchema },
+    'ai-referral': { schema: aiReferralSchema },
+    citation: { schema: citationSchema },
+  },
   controllers,
   routes,
-  register() {},
+  register({ strapi }: { strapi: StrapiLike & { documents: { use?(mw: unknown): unknown } } }) {
+    ;(strapi.documents as { use?(mw: unknown): unknown }).use?.(citationMiddleware(strapi))
+  },
   bootstrap({ strapi }: { strapi: StrapiLike }) {
-    if (!getConfig(strapi).secret) {
+    const cfg = getConfig(strapi)
+    if (!cfg.secret) {
       strapi.log.warn('[geo] No secret configured: anyone can post crawler hits to /api/geo/ingest.')
+      if (cfg.referrals?.enabled) strapi.log.warn('[geo] `referrals` is enabled but no secret is configured, so referral reports are refused.')
     }
   },
 }

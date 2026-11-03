@@ -7,6 +7,7 @@ import {
   lastSegment,
   richTextToMarkdown,
   toLlmsDocument,
+  type CheckThresholds,
   type JsonLd,
   type LlmsDocument,
   type LlmsSourceConfig,
@@ -37,10 +38,19 @@ export interface LlmsOptions {
   mediaURL?: string
   /** Link llms.txt entries to the `.md` version of each page. Turn on once the frontend serves them. Default false. */
   markdownLinks?: boolean
+  /**
+   * Seconds browsers and CDNs may cache llms.txt, Markdown and JSON-LD (`Cache-Control: public`). Default 300.
+   * The plugin itself caches nothing; a CDN may keep serving an unpublished page for up to this long. `0` sends `no-store`.
+   */
+  cacheMaxAge?: number
+  /** Thresholds of the editor panel's length suggestions. */
+  checks?: CheckThresholds
+  /** Other hosts of the same site (e.g. `www.example.com`), counted with `siteURL`'s host in per-page visits. */
+  hosts?: string[]
 }
 
 /** Whether a collection has a top-level `slug` field (rows, collapsibles and unnamed tabs count as top level). */
-function hasField(fields: Field[] | undefined, name: string): boolean {
+export function hasField(fields: Field[] | undefined, name: string): boolean {
   return (fields ?? []).some((f: any) => {
     if (f.name === name) return true
     if ((f.type === 'row' || f.type === 'collapsible') && hasField(f.fields, name)) return true
@@ -49,7 +59,7 @@ function hasField(fields: Field[] | undefined, name: string): boolean {
   })
 }
 
-async function queryCollection(
+export async function queryCollection(
   payload: Payload,
   slug: string,
   config: CollectionConfig,
@@ -78,7 +88,7 @@ async function queryCollection(
   }
 }
 
-function mapDoc(doc: Record<string, any>, slug: string, source: PayloadLlmsSource, options: LlmsOptions, mediaURL?: string) {
+export function mapDoc(doc: Record<string, any>, slug: string, source: PayloadLlmsSource, options: LlmsOptions, mediaURL?: string) {
   return toLlmsDocument(doc, {
     name: slug,
     siteURL: options.siteURL,

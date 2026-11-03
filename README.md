@@ -93,9 +93,38 @@ module.exports = ({ env }) => ({
 })
 ```
 
-llms.txt, Markdown and JSON-LD only include content types the **Public** role can read (`find` or `findOne` under
-Settings → Users & Permissions → Roles → Public), so they never expose what the REST API would refuse. If your
-frontend reads Strapi with an API token instead, set `llms.publicOnly: false`.
+### What Strapi serves publicly
+
+llms.txt, llms-full.txt, Markdown, JSON-LD and the dashboard's coverage all use one visibility rule, the one an
+anonymous REST request gets:
+
+- Only **published** entries (drafts and unpublished entries never appear).
+- Only content types whose `find` the **Public** role is allowed (Settings → Users & Permissions → Roles → Public).
+  `findOne` alone is not enough, because llms.txt lists entries and pages are looked up by slug.
+- Content types whose REST `find` route has custom **policies or middlewares** are skipped: the plugin can't run
+  them for an anonymous visitor. Add an `isPublic` check (below) to serve them.
+- Each entry passes through Strapi's content API output sanitizer with the Public role's permissions, so private
+  fields and relations or media the Public role can't read (an `author` relation without `author.find`, say) are dropped.
+- A page that isn't public returns the same `404 Not found` as a page that doesn't exist; lists just leave it out.
+
+For rules the Public role can't express (members-only flags, a route policy, document-level permissions from
+another plugin), add `isPublic` to the content type. It gets the sanitized entry and must return `true` to serve it;
+anything else, or a throw, hides it:
+
+```js
+'api::article.article': {
+  url: (doc) => `/blog/${doc.slug}`,
+  isPublic: (entry) => entry.visibility === 'public',
+},
+```
+
+If your frontend reads Strapi with an API token instead, set `llms.publicOnly: false` to serve every listed type
+(private fields are still dropped, and `isPublic` still applies).
+
+**Caching.** The plugin caches nothing: every request re-reads the Public role and the published entries, so
+publishing, unpublishing and permission changes apply on the next request. Responses carry
+`Cache-Control: public, max-age=300` (404s at most 60 s), so a browser or CDN in front may keep serving an
+unpublished page for that long. Set `llms.cacheMaxAge` (seconds, `0` for `no-store`), or purge the CDN on unpublish.
 
 The dashboard is under **AI Visibility** in the admin menu.
 
@@ -149,7 +178,11 @@ Set `llms.markdownLinks: true` in the CMS to point llms.txt entries at the `.md`
 version, add `alternates: { types: { 'text/markdown': '/blog/post.md' } }` to the page's Next.js metadata.
 
 Collections / content types with a `slug` field are looked up by the last path segment; others are scanned, so
-give large collections a `slug`.
+give large collections a `slug`. The whole path must match the entry's URL, so the same slug in two collections
+(`/blog/same` and `/same`) never resolves to the wrong one.
+
+In Payload, the queries run with `overrideAccess: false` and no user, so collection `read` access (including
+per-document `Where` results) decides what is public. `llms.cacheMaxAge` works the same as in Strapi.
 
 ## JSON-LD
 
@@ -195,8 +228,138 @@ and `publisher` are filled in. Site-wide `llms.logo`, `llms.language` and `llms.
 URLs, default the CMS server URL) are optional. The core builder `buildJsonLd(site, doc)` is exported from
 `@garus-ltd/geo-core` if you'd rather build it in the frontend.
 
+## Editor GEO panel
+
+Every collection / content type in the `llms` config gets a read-only **GEO check** panel in its edit view (Payload:
+sidebar; Strapi: content manager side panel). Other collections show nothing. It never writes to the document,
+doesn't block saving or publishing, can be collapsed, and works on the current unsaved edits (checks run about 0.8 s
+after typing stops).
+
+- **Checks** are deterministic rules, each with a rule id, status (pass / warning / error / N/A, shown as text, not
+  only color), reason, field and suggestion: title, description length, body empty or not convertible, subheadings
+  on long bodies (a suggestion only), author and date fallbacks, image URL, empty FAQ items, configured field paths
+  that don't exist, frontend URL (including `/undefined` slugs), publish status and anonymous visibility. Sources are
+  checked only when you map a field (`sourcesField`); the plugin never judges whether content is true. There is no
+  "AI ranking" score.
+- **Markdown** and **JSON-LD** previews use the same code as the public routes, so the "published version" preview is
+  byte-identical to `/api/geo/markdown` and `/api/geo/jsonld`. "Current edits" previews drafts and unsaved changes.
+  Both come from an admin-only endpoint (`POST /api/geo/inspect` in Payload, `POST /geo/inspect` in the Strapi admin
+  API) that requires a logged-in user who can read the collection, only accepts configured collections, and answers
+  `Cache-Control: private, no-store`. In Strapi the preview also goes through the Public sanitizer, so it shows what
+  the public will get.
+- The JSON-LD tab adds plugin checks (parses, `<` escaped for `<script>`, required / recommended properties, date
+  order, absolute URLs, FAQPage on the same page) and links to the Schema.org validator and Google Rich Results Test
+  for the live public URL only. Passing the plugin's checks is not the same as rich result eligibility.
+- **Fields** shows which document field fed each output value and the fallback used when it was empty.
+
+Options: `editorPanel: false` turns the panel off (Payload: plugin option; Strapi: `llms.editorPanel`);
+`llms.checks: { descriptionMin, descriptionMax, titleMax, headingsAfter }` tunes the length suggestions;
+`sourcesField` (per collection) turns on the sources check. Payload needs `payload generate:importmap` after
+upgrading so it finds the `GeoEditPanel` component. In Payload, field-level read access is not applied to the
+"current edits" preview (collection access is).
+
+## Setup status
+
+The full dashboard (Payload: above **GEO > AI Crawler Hits**; Strapi: **AI Visibility**) has a **Setup status** tab
+that keeps three kinds of evidence apart:
+
+- **Configuration**: `siteURL`, each mapped collection and how many public documents it has, a sample public
+  document, whether ingest is enabled, whether a secret is set (never its value), IP verification.
+- **Connectivity test**, only when you press *Run test*: the CMS requests the sample article page, its `.md`
+  version, the page with `Accept: text/markdown`, `/llms.txt`, and checks for a JSON-LD tag, each answered as
+  OK / Not enabled / Problem / Not verified. The article request carries a one-time token in its User-Agent; when the
+  frontend proxy reports it, the CMS recognises the token (only tokens it issued in the last 10 minutes count),
+  records "report received with a valid secret" (or "wrong secret", or "ingest disabled") and does **not** store the
+  hit, so test traffic never reaches visit counts or coverage. Requests go only to the `siteURL` origin, with a 5 s
+  timeout, at most 3 redirects (each re-checked), a 256 KB body cap, and no private or loopback addresses. For local
+  development set `diagnostics: { allowPrivateNetwork: true }` (Payload plugin option; Strapi plugin config).
+- **Recent evidence**: the newest stored hit, the last accepted report and recent rejected reports (status and
+  reason only) since the CMS started. A site with no AI visits yet shows "No data received yet", not an error.
+
+When the frontend is a separate deployment the CMS can't see its environment, so anything without evidence shows
+**Not verified**, and the tab lists `curl` commands to check by hand.
+
+## Per-page visits
+
+The editor panel's **Visits** tab shows AI crawler visits to that document's page over 7 / 30 / 90 days: valid
+visits (everything but `spoofed`), live user fetches, `.md` reads (counted with the page), a daily chart, platforms,
+purposes, IP-check counts and the latest records with their raw request path. The page path comes from the document
+through the same URL mapping as llms.txt (published version first), never from its title; query strings, `#` and
+trailing slashes are ignored, and hits for another host are left out (add aliases with `llms.hosts:
+['www.example.com']`). After a URL change only the new URL is counted. Days are UTC. The CMS loads at most 20,000
+matching rows per request, narrowed in the database by path and date, and aggregates them on the server.
+"No visits" only means no crawler request reached the site; it says nothing about whether an assistant cites the page.
+
 Already have middleware? Wrap it: `withGeo(options, yourMiddleware)`.
 `@garus-ltd/geo-next` only uses Fetch APIs, so `trackAICrawler(request, ctx, options)` also works in a Cloudflare Worker.
+
+## AI referrals and citation evidence
+
+The dashboard's **AI referrals & citations** tab shows three signals side by side and never adds them up:
+
+| Signal | What it shows | What it doesn't |
+| --- | --- | --- |
+| AI crawler visits | An AI bot fetched a page (the existing log). | That the page was cited. |
+| AI referral visits | A person's browser arrived from an AI assistant (its `Referer`). | Every citation; the Referer can be forged, so it is never shown as verified. |
+| Recorded citation evidence | Someone saw a link to the site in an answer and recorded it by hand. | All citations anywhere. "Verified" means a person checked the record, not that the platform confirmed it. |
+
+There is no automatic citation monitoring. A `CitationMonitorProvider` interface is exported from `@garus-ltd/geo-core`
+for a future authorised API; with none configured the tab says "Automatic monitoring: not configured".
+
+### AI referral visits (off by default)
+
+```ts
+// CMS (Payload plugin options / Strapi config/plugins.ts `geo.config`)
+referrals: { enabled: true }   // needs `secret`
+
+// Frontend proxy
+export const middleware = withGeo({
+  endpoint: process.env.GEO_INGEST_URL!,
+  secret: process.env.GEO_SECRET,
+  referrals: {
+    endpoint: process.env.GEO_REFERRALS_URL!, // https://cms.example.com/api/geo/referrals ('/api/geo/referrals' for Payload in the same app)
+    consent: (req) => req.headers.get('cookie')?.includes('analytics=yes') ?? false, // your consent check (optional)
+  },
+  ignore: (path) => path.startsWith('/admin'), // e.g. Payload's admin in the same app
+})
+```
+
+The proxy reports a request only when it is a top-level page load (`Sec-Fetch-Dest: document`, not a prefetch, not
+an AI crawler) whose `Referer` host is a known assistant: chatgpt.com / chat.openai.com, perplexity.ai, claude.ai,
+gemini.google.com, copilot.microsoft.com, chat.deepseek.com, doubao.com, kimi.com / kimi.moonshot.cn, chat.mistral.ai,
+grok.com, meta.ai, you.com, poe.com, phind.com, alice.yandex.ru, giga.chat. Hosts match exactly or as a parent
+domain, never as a substring (`chatgpt.com.evil.test` and `?q=chatgpt` don't count). Without a Referer, only an exact
+`utm_source=<known host>` counts (ChatGPT adds `utm_source=chatgpt.com`). Pass `rules` (same shape as the exported
+`AI_REFERRERS`) on both sides to change the list. Everything else is unknown and not reported; with
+`referrals.unknown: true` in the proxy and `recordUnknown: true` in the CMS, external referrals that match no rule are
+stored as platform `unknown` (host only) and shown separately, never counted as AI visits.
+
+**Data kept**: timestamp, platform, `referrer` or `utm`, the referrer's host, the landing path (no query string) and
+the site host. The proxy sends only the referrer's origin and the path plus `utm_source`; the client IP and
+User-Agent are sent for an in-memory rate limit (20 per client and 600 in total per minute) and 30-minute duplicate
+filter, and are never stored. No conversation content, full referrer URLs or cross-site identifiers are kept.
+Reports need the shared secret (`GEO_SECRET` stays on the server; nothing runs in the browser), are rejected without
+one, and go to their own endpoint and table, separate from crawler hits. The connectivity test in **Setup status**
+sends a test visit with `Referer: chatgpt.com` and a one-time token, which is recognised and never stored.
+
+### Citation evidence (off by default)
+
+`citations: { enabled: true }` adds a **Citation Evidence** list for recording answers by hand: platform, question,
+observed time, cited URL, answer ID, answer link, screenshot, language, region, other conditions, recorded by, status
+(pending / verified / invalid) and notes. Records with the same platform + answer ID + cited URL are refused as
+duplicates; without an answer ID, telling duplicates apart is up to the reviewer. Only logged-in admins can read or
+change them, and no public endpoint serves them.
+
+- **Payload**: collection `geo-citations` with versions (edit history) and `recordedBy` set from the logged-in user;
+  screenshots go to a private upload collection `geo-citation-screenshots` (files are served only to logged-in users,
+  stored in `./geo-citation-screenshots`; `citations: { screenshots: false }` turns it off). Enabling `referrals` or
+  `citations` adds collections, so run a migration on Postgres / SQLite in production (`payload migrate:create`).
+- **Strapi**: content types `plugin::geo.ai-referral` and `plugin::geo.citation` are always registered (Strapi creates
+  the tables on start) but stay empty unless enabled. Strapi's media library serves files publicly, so evidence has a
+  `screenshotRef` text field (where you keep the screenshot) instead of an upload. Created by / updated by are kept by
+  Strapi, and the plugin appends each change (who, when, which fields) to a read-only `history` list. The review
+  status field is `reviewStatus`, because `status` is reserved in Strapi 5. Admin roles need Content Manager
+  permissions on these types to see them.
 
 ## IP verification
 
@@ -223,7 +386,8 @@ npm run typecheck
 1. ~~AI crawler logs~~
 2. ~~`llms.txt`, `llms-full.txt`, Markdown version of each page (`/xxx.md`)~~
 3. ~~JSON-LD from config presets (Article, FAQ)~~, more presets (Product, HowTo, BreadcrumbList)
-4. ~~Admin dashboard~~, per-document sidebar in the editor
+4. ~~Admin dashboard~~, ~~per-document sidebar in the editor~~
+5. ~~AI referral visits and hand-recorded citation evidence~~; automatic citation monitoring through an authorised API
 
 ## License
 
