@@ -419,4 +419,4 @@ MIT
 One-time setup: npm only lets you add a trusted publisher to a package that already exists, so the first
 version of each package is published by hand (`npm login`, then `npm publish -w packages/<pkg> --access public`).
 Then, on npmjs.com, open each package's **Settings → Trusted Publisher**, choose GitHub Actions, and enter
-owner `echoatgrs`, repository `geo-plugin`, workflow `release.yml`.
+owner `Askbeam`, repository `Askbeam`, workflow `release.yml`.

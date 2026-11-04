@@ -5,11 +5,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/echoatgrs/geo-plugin.git",
+    "url": "git+https://github.com/Askbeam/Askbeam.git",
     "directory": "packages/strapi-plugin-geo"
   },
-  "homepage": "https://github.com/echoatgrs/geo-plugin#readme",
-  "bugs": "https://github.com/echoatgrs/geo-plugin/issues",
+  "homepage": "https://github.com/Askbeam/Askbeam#readme",
+  "bugs": "https://github.com/Askbeam/Askbeam/issues",
   "keywords": [
     "strapi",
     "strapi-plugin",
