@@ -1,4 +1,4 @@
-import type { CitationSummary, CrawlerStats, ReferralStats } from '@garus-ltd/geo-core'
+import type { CitationSummary, CrawlerStats, ReferralStats } from '@askbeam/core'
 import { useEffect, useState, type CSSProperties } from 'react'
 
 export interface EvidenceReport {

@@ -1,5 +1,5 @@
-import { GeoDashboard, saveDownload, type CrawlerStats, type DataReport, type DataSet, type EvidenceReport, type InvalidationReport, type SetupReport } from '@garus-ltd/geo-dashboard'
-import type { DiagnosticItem } from '@garus-ltd/geo-core'
+import { GeoDashboard, saveDownload, type CrawlerStats, type DataReport, type DataSet, type EvidenceReport, type InvalidationReport, type SetupReport } from '@askbeam/dashboard'
+import type { DiagnosticItem } from '@askbeam/core'
 import { useFetchClient } from '@strapi/strapi/admin'
 import { useCallback, useMemo } from 'react'
 

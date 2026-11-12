@@ -33,7 +33,7 @@ export default {
       Component: () => import('./page'),
       permissions: [],
     })
-    app.registerPlugin({ id: PLUGIN_ID, name: 'Headless GEO' })
+    app.registerPlugin({ id: PLUGIN_ID, name: 'Askbeam' })
   },
   bootstrap(app: StrapiApp) {
     // Read-only GEO check panel in the edit view; it renders only for content types in `llms.contentTypes`.

@@ -12,7 +12,7 @@ import {
   type ProbeRegistry,
   type ReferralEvent,
   type ReferrerRule,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 import type { KoaContextLike, StrapiLike } from './types'
 
 export const AI_REFERRAL_UID = 'plugin::geo.ai-referral'

@@ -21,7 +21,7 @@ import {
   type HitStore,
   type IPVerifierOptions,
   type StatsHit,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 import type { CollectionConfig, Config, Endpoint, Plugin } from 'payload'
 import { CRAWLER_HITS_SLUG, crawlerHitsCollection } from './collection.js'
 import {
@@ -162,7 +162,7 @@ export const geoPlugin =
                     position: 'sidebar' as const,
                     components: {
                       Field: {
-                        path: 'payload-plugin-geo/client#GeoEditPanel',
+                        path: '@askbeam/payload-plugin/client#GeoEditPanel',
                         clientProps: {
                           inspectURL: `${config.serverURL ?? ''}${apiRoute}/geo/inspect`,
                           statsURL: `${config.serverURL ?? ''}${apiRoute}/geo/document-stats`,
@@ -372,7 +372,7 @@ export const geoPlugin =
       const statsBase = `${config.serverURL ?? ''}${apiRoute}`
       const hitsHref = `${config.routes?.admin ?? '/admin'}/collections/${collection.slug}`
       const component = (compact: boolean) => ({
-        path: 'payload-plugin-geo/client#GeoDashboardClient',
+        path: '@askbeam/payload-plugin/client#GeoDashboardClient',
         clientProps: {
           statsURL: `${statsBase}/geo/stats`,
           setupURL: compact ? undefined : `${statsBase}/geo/setup`,

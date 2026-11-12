@@ -10,7 +10,7 @@ import {
   type IngestLog,
   type ProbeRegistry,
   type SetupFacts,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 import type { CollectionConfig, PayloadRequest, Where } from 'payload'
 import { mapDoc, queryCollection, type LlmsOptions } from './llms.js'
 

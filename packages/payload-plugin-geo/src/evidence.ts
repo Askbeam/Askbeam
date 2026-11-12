@@ -13,7 +13,7 @@ import {
   type ProbeRegistry,
   type ReferralEvent,
   type ReferrerRule,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 import type { CollectionConfig, Endpoint, PayloadRequest } from 'payload'
 import { ValidationError } from 'payload'
 
@@ -64,7 +64,7 @@ export function referralsCollection(overrides: Partial<CollectionConfig> = {}): 
       useAsTitle: 'path',
       defaultColumns: ['timestamp', 'platform', 'source', 'path', 'referrerHost'],
       description:
-        'Browser visits whose Referer is a known AI assistant, reported by the @garus-ltd/geo-next proxy. Traffic evidence, not proof of every citation; the Referer can be forged. Only host and landing path are stored.',
+        'Browser visits whose Referer is a known AI assistant, reported by the @askbeam/next proxy. Traffic evidence, not proof of every citation; the Referer can be forged. Only host and landing path are stored.',
     },
     access: { read: loggedIn, create: () => false, update: () => false, delete: loggedIn },
     timestamps: false,

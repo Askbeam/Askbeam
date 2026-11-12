@@ -24,7 +24,7 @@ import {
   type OrganizationConfig,
   type LlmsDocument,
   type LlmsSourceConfig,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 import type { CollectionConfig, Field, Payload, Where } from 'payload'
 
 export interface PayloadLlmsSource extends LlmsSourceConfig {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { signChange, siteChangeEvent } from '@garus-ltd/geo-core'
+import { signChange, siteChangeEvent } from '@askbeam/core'
 import { llmsSegmentRoute, revalidationHandler } from './index.js'
 
 const secret = 'z'.repeat(32)

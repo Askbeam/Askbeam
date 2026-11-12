@@ -11,7 +11,7 @@ import {
   type IngestLog,
   type ProbeRegistry,
   type SetupFacts,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 import { publicAccess } from './access'
 import { mappingOptions, populateOf } from './content'
 import type { GeoStrapiConfig } from './config'

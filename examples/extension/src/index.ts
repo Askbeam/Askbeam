@@ -1,6 +1,6 @@
 /**
  * An example GEO extension, kept outside the plugin packages: every import is a public export of
- * `@garus-ltd/geo-core`. Use it as a template for your own package (bots, rules, converters, fields, JSON-LD,
+ * `@askbeam/core`. Use it as a template for your own package (bots, rules, converters, fields, JSON-LD,
  * change listener) and pass its parts to the Payload / Strapi plugin and to the frontend proxy.
  */
 import {
@@ -11,7 +11,7 @@ import {
   type ContentConverterOptions,
   type FieldResolver,
   type LlmsSourceConfig,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 
 /** A crawler the built-in list doesn't know. Pass the same list to the CMS plugin and to withGeo / geoFetchHandler. */
 export const acmeBots = defineBots([

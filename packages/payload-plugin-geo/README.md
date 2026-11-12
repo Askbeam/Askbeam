@@ -1,14 +1,14 @@
-# payload-plugin-geo
+# @askbeam/payload-plugin
 
-[Headless GEO](https://github.com/echoatgrs/geo-plugin) for Payload 3: see which AI crawlers read your site, serve llms.txt, per-page Markdown and JSON-LD, and get an AI visibility dashboard in the admin.
+[Askbeam](https://github.com/Askbeam/Askbeam) for Payload 3: see which AI crawlers read your site, serve llms.txt, per-page Markdown and JSON-LD, and get an AI visibility dashboard in the admin.
 
 ```sh
-npm install payload-plugin-geo @garus-ltd/geo-next
+npm install @askbeam/payload-plugin @askbeam/next
 ```
 
 ```ts
 // payload.config.ts
-import { geoPlugin } from 'payload-plugin-geo'
+import { geoPlugin } from '@askbeam/payload-plugin'
 
 export default buildConfig({
   plugins: [
@@ -26,11 +26,11 @@ export default buildConfig({
 
 ```ts
 // middleware.ts (Next 15) or proxy.ts (Next 16), in the same app
-import { withGeo } from '@garus-ltd/geo-next'
+import { withGeo } from '@askbeam/next'
 
 export const middleware = withGeo({ endpoint: '/api/geo/ingest', secret: process.env.GEO_SECRET })
 ```
 
-Then run `payload generate:importmap`. Full docs: https://github.com/echoatgrs/geo-plugin
+Then run `payload generate:importmap`. Full docs: https://github.com/Askbeam/Askbeam
 
-More: [JSON-LD presets](https://github.com/echoatgrs/geo-plugin/blob/main/docs/jsonld-presets.md), [converters](https://github.com/echoatgrs/geo-plugin/blob/main/docs/converters.md), [cache notices](https://github.com/echoatgrs/geo-plugin/blob/main/docs/cache.md), [large sites](https://github.com/echoatgrs/geo-plugin/blob/main/docs/segments.md), [data maintenance](https://github.com/echoatgrs/geo-plugin/blob/main/docs/maintenance.md), [extensions](https://github.com/echoatgrs/geo-plugin/blob/main/docs/extensions.md), [upgrading](https://github.com/echoatgrs/geo-plugin/blob/main/docs/migration.md).
+More: [JSON-LD presets](https://github.com/Askbeam/Askbeam/blob/main/docs/jsonld-presets.md), [converters](https://github.com/Askbeam/Askbeam/blob/main/docs/converters.md), [cache notices](https://github.com/Askbeam/Askbeam/blob/main/docs/cache.md), [large sites](https://github.com/Askbeam/Askbeam/blob/main/docs/segments.md), [data maintenance](https://github.com/Askbeam/Askbeam/blob/main/docs/maintenance.md), [extensions](https://github.com/Askbeam/Askbeam/blob/main/docs/extensions.md), [upgrading](https://github.com/Askbeam/Askbeam/blob/main/docs/migration.md).

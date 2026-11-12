@@ -42,7 +42,7 @@ function ctx(body: unknown, secret = '', query: Record<string, unknown> = {}): K
   }
 }
 
-describe('strapi-plugin-geo', () => {
+describe('@askbeam/strapi-plugin', () => {
   it('stores hits through the Document Service', async () => {
     const { strapi, create } = fakeStrapi({ secret: 'abc', verifyIPs: false })
     const c = ctx({ path: '/docs', userAgent: 'Claude-User/1.0' }, 'abc')

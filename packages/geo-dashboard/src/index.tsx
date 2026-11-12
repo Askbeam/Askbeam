@@ -1,4 +1,4 @@
-import type { CrawlerStats } from '@garus-ltd/geo-core'
+import type { CrawlerStats } from '@askbeam/core'
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { GeoData, type GeoDataProps } from './data.js'
 import { GeoEvidence, type GeoEvidenceProps } from './evidence.js'
@@ -113,7 +113,7 @@ function SetupHint() {
         <code>middleware.ts</code>) to start logging GPTBot, ClaudeBot, ChatGPT-User and others:
       </p>
       <pre style={{ margin: 0, padding: 12, borderRadius: 6, background: 'color-mix(in srgb, currentColor 8%, transparent)', overflowX: 'auto', fontSize: 12 }}>
-{`import { withGeo } from '@garus-ltd/geo-next'
+{`import { withGeo } from '@askbeam/next'
 
 export const proxy = withGeo({
   endpoint: process.env.GEO_INGEST_URL, // https://<cms>/api/geo/ingest

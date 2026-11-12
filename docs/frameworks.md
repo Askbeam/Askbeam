@@ -1,11 +1,11 @@
 # Frontends other than Next.js
 
-`@garus-ltd/geo-next` has no Next.js dependency. Next.js uses `withGeo`, `llmsRoute`, `llmsSegmentRoute` and
+`@askbeam/next` has no Next.js dependency. Next.js uses `withGeo`, `llmsRoute`, `llmsSegmentRoute` and
 `revalidationHandler` directly. Every other framework with Fetch API `Request` / `Response` uses
 `geoFetchHandler`, which does what `withGeo` and the llms routes do together:
 
 ```ts
-import { geoFetchHandler } from '@garus-ltd/geo-next'
+import { geoFetchHandler } from '@askbeam/next'
 
 const geo = geoFetchHandler({
   endpoint: `${CMS}/api/geo/ingest`,          // crawler reports

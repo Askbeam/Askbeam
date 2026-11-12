@@ -1,7 +1,7 @@
-// Headless GEO on a plain Node HTTP server. Run: CMS_URL=http://localhost:1337 GEO_SECRET=… node server.mjs
+// Askbeam on a plain Node HTTP server. Run: CMS_URL=http://localhost:1337 GEO_SECRET=… node server.mjs
 // Works with Strapi (CMS API at /api/geo/…) and Payload (same paths under its API route).
 import { createServer } from 'node:http'
-import { fetchJsonLd, geoFetchHandler, jsonLdScriptTag, revalidationHandler } from '@garus-ltd/geo-next'
+import { fetchJsonLd, geoFetchHandler, jsonLdScriptTag, revalidationHandler } from '@askbeam/next'
 
 const CMS = (process.env.CMS_URL ?? 'http://localhost:1337').replace(/\/+$/, '')
 const PORT = Number(process.env.PORT ?? 3000)

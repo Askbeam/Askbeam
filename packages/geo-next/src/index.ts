@@ -16,7 +16,7 @@ import {
   type HitInput,
   type JsonLd,
   type ReferrerRule,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 
 export { serializeJsonLd, type JsonLd, type ContentChangeEvent }
 
@@ -115,7 +115,7 @@ export function trackAICrawler(
   event.waitUntil(
     doFetch(new URL(options.endpoint, url), { method: 'POST', headers, body: JSON.stringify(hit) })
       .then((res) => {
-        if (!res.ok) throw new Error(`Headless GEO ingest responded ${res.status}`)
+        if (!res.ok) throw new Error(`Askbeam ingest responded ${res.status}`)
       })
       .catch((error: unknown) => (options.onError ?? console.warn)(error)),
   )
@@ -180,7 +180,7 @@ export async function trackAIReferral(request: Request, options: GeoTrackOptions
   }
   try {
     const res = await (options.fetch ?? globalThis.fetch)(endpoint, { method: 'POST', headers, body: JSON.stringify(body) })
-    if (!res.ok && res.status !== 429) throw new Error(`Headless GEO referral report responded ${res.status}`)
+    if (!res.ok && res.status !== 429) throw new Error(`Askbeam referral report responded ${res.status}`)
     return true
   } catch (error) {
     ;(options.onError ?? console.warn)(error)
@@ -238,7 +238,7 @@ export async function markdownResponse(request: Request, options: MarkdownOption
  *
  * ```ts
  * // proxy.ts (Next 16) or middleware.ts (Next 15)
- * import { withGeo } from '@garus-ltd/geo-next'
+ * import { withGeo } from '@askbeam/next'
  * export const proxy = withGeo({ endpoint: process.env.GEO_INGEST_URL!, secret: process.env.GEO_SECRET })
  * ```
  */
@@ -272,7 +272,7 @@ export interface LlmsRouteOptions {
  *
  * ```ts
  * // app/llms.txt/route.ts
- * import { llmsRoute } from '@garus-ltd/geo-next'
+ * import { llmsRoute } from '@askbeam/next'
  * export const GET = llmsRoute({ source: `${process.env.CMS_URL}/api/geo/llms.txt` })
  * ```
  */
@@ -310,7 +310,7 @@ type RouteContext = { params?: Record<string, string | string[]> | Promise<Recor
  *
  * ```ts
  * // app/llms/[file]/route.ts
- * import { llmsSegmentRoute } from '@garus-ltd/geo-next'
+ * import { llmsSegmentRoute } from '@askbeam/next'
  * export const GET = llmsSegmentRoute({ source: `${process.env.CMS_URL}/api/geo/llms` })
  * ```
  */
@@ -356,7 +356,7 @@ export interface RevalidationOptions {
  * ```ts
  * // app/api/geo-revalidate/route.ts
  * import { revalidatePath, revalidateTag } from 'next/cache'
- * import { revalidationHandler } from '@garus-ltd/geo-next'
+ * import { revalidationHandler } from '@askbeam/next'
  * export const POST = revalidationHandler({
  *   secret: process.env.GEO_REVALIDATE_SECRET!,
  *   onEvent: (event) => { for (const path of event.paths) revalidatePath(path); revalidateTag('geo') },

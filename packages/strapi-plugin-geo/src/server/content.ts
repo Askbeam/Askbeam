@@ -5,7 +5,7 @@ import {
   type ContentConverter,
   type JsonLdSite,
   type LlmsMappingOptions,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 import type { StrapiLlmsConfig, StrapiLlmsSource } from './config'
 import type { StrapiLike } from './types'
 

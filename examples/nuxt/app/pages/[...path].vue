@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { serializeJsonLd } from '@garus-ltd/geo-next'
+import { serializeJsonLd } from '@askbeam/next'
 
 const route = useRoute()
 const { data: jsonLd } = await useFetch('/api/jsonld', { query: { path: route.path } })

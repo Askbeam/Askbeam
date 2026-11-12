@@ -1,4 +1,4 @@
-import { geoFetchHandler, revalidationHandler } from '@garus-ltd/geo-next'
+import { geoFetchHandler, revalidationHandler } from '@askbeam/next'
 
 let handler: ReturnType<typeof geoFetchHandler> | null = null
 let receiver: ReturnType<typeof revalidationHandler> | null | undefined

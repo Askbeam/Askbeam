@@ -21,8 +21,8 @@ is guessed: an unknown block never becomes "best effort" text.
 ## Your own converters
 
 ```ts
-import type { ContentConverterOptions } from '@garus-ltd/geo-core'
-import { markdownTable } from '@garus-ltd/geo-core'
+import type { ContentConverterOptions } from '@askbeam/core'
+import { markdownTable } from '@askbeam/core'
 
 export const converters: ContentConverterOptions = {
   blocks: {

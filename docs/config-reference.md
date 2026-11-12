@@ -34,7 +34,7 @@ Existing options are documented in the [README](../README.md).
 | Payload `depth` | relation depth of the anonymous read (default 1) |
 | Strapi `populate`, `populateDepth` | default: from the schema, depth 5 |
 
-## Frontend (`@garus-ltd/geo-next`)
+## Frontend (`@askbeam/next`)
 
 | Export | |
 | --- | --- |

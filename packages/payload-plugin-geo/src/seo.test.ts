@@ -1,4 +1,4 @@
-import { PAYLOAD_SEO_PLUGIN } from '@garus-ltd/geo-core'
+import { PAYLOAD_SEO_PLUGIN } from '@askbeam/core'
 import { describe, expect, it, vi } from 'vitest'
 import type { Config } from 'payload'
 import { geoPlugin } from './index.js'
