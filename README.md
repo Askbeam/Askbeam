@@ -1,17 +1,149 @@
 # Askbeam
 
-Make headless sites visible to AI, and see in your CMS which AI crawlers read which pages.
+**See which AI crawlers read your headless CMS content, and make that content easy for AI to read.**
+Open-source plugins for Payload 3 and Strapi 5, plus a frontend SDK for Next.js, Astro, Nuxt and plain Node.
 
-It does four things:
+[![npm](https://img.shields.io/npm/v/@askbeam/core?label=npm&color=6c5ce7)](https://www.npmjs.com/org/askbeam)
+[![CI](https://github.com/Askbeam/Askbeam/actions/workflows/ci.yml/badge.svg)](https://github.com/Askbeam/Askbeam/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 
-1. **AI crawler logs.** It records visits from GPTBot, ClaudeBot,
-PerplexityBot, ChatGPT-User and others, checks their IPs against the vendors' published ranges,
-and separates three kinds of visits (table below).
-2. **llms.txt and llms-full.txt**, generated from your published CMS content.
-3. **Per-page Markdown and JSON-LD.** Every published article is available as Markdown (`/blog/post.md`, or the
-   normal URL with `Accept: text/markdown`), and as schema.org JSON-LD (Article / BlogPosting / FAQPage...) for the page's `<head>`.
-4. **An AI visibility dashboard** inside the Payload or Strapi admin: visits per platform, live user fetches,
-   content coverage, and the list of pages no AI has crawled.
+![The AI visibility dashboard: crawler visits, live user fetches, content coverage and llms.txt reads, a daily chart, visits by platform, top pages, and pages no AI has crawled](docs/dashboard-preview.png)
+
+Is ChatGPT reading your site? Is Perplexity opening your pages to answer people's questions? With a headless CMS
+you can't tell: the CMS never sees the requests that reach your frontend. Askbeam reports them back and shows them
+next to your content.
+
+- **A verified AI crawler log.** Visits from GPTBot, ClaudeBot, PerplexityBot, ChatGPT-User and many more, each
+  checked against the vendor's published IP ranges, so fake bots show up as `spoofed` instead of inflating your numbers.
+- **Live user fetches.** See when an assistant opened your page because a real person just asked it something.
+- **llms.txt, Markdown and JSON-LD from your content.** `/llms.txt`, `/llms-full.txt`, a Markdown version of every
+  page (`/blog/post.md`) and schema.org JSON-LD, built from published, publicly readable entries only.
+- **A dashboard and editor panel in your admin.** Visits per platform, content coverage, pages no AI has crawled yet,
+  and per-page checks while you write.
+- **Your data stays with you.** Everything runs in your own CMS and frontend and is stored in your own database.
+  Nothing is on until you configure it, and nothing is sent anywhere you didn't configure: no telemetry, no license checks.
+
+Askbeam measures; it doesn't promise anything. Valid output is no guarantee of rich results, AI indexing or citation.
+
+## Quick start
+
+You need a long random secret shared by the CMS and the frontend, for example from `openssl rand -hex 32`. Set it
+as `GEO_SECRET` in both.
+
+### Payload 3
+
+Payload and the frontend run in the same Next.js app.
+
+1. Install:
+
+   ```sh
+   npm install @askbeam/payload-plugin @askbeam/next
+   ```
+
+2. Add the plugin and list the collections to publish to AI:
+
+   ```ts
+   // payload.config.ts
+   import { geoPlugin } from '@askbeam/payload-plugin'
+
+   export default buildConfig({
+     plugins: [
+       geoPlugin({
+         secret: process.env.GEO_SECRET,
+         llms: {
+           siteURL: 'https://example.com',
+           name: 'Acme',
+           description: 'What Acme does, in one sentence.',
+           collections: {
+             posts: { section: 'Blog', url: (doc) => `/blog/${doc.slug}` },
+             pages: { section: 'Pages', url: (doc) => `/${doc.slug}` },
+           },
+         },
+       }),
+     ],
+   })
+   ```
+
+3. Report AI crawler visits from the frontend:
+
+   ```ts
+   // proxy.ts (Next 16) or middleware.ts (Next 15), in the same app
+   import { withGeo } from '@askbeam/next'
+
+   export const proxy = withGeo({ endpoint: '/api/geo/ingest', secret: process.env.GEO_SECRET })
+   ```
+
+4. Run `npx payload generate:importmap` so Payload finds the admin components, then start the app.
+
+The dashboard appears on the admin home (compact) and above the **GEO > AI Crawler Hits** list (full).
+
+### Strapi 5
+
+Strapi and the frontend are separate apps.
+
+1. Install the plugin in Strapi, and the SDK in your frontend:
+
+   ```sh
+   npm install @askbeam/strapi-plugin   # in the Strapi project
+   npm install @askbeam/next            # in the frontend
+   ```
+
+2. Enable the plugin and list the content types to publish to AI:
+
+   ```js
+   // config/plugins.js
+   module.exports = ({ env }) => ({
+     geo: {
+       enabled: true,
+       config: {
+         secret: env('GEO_SECRET'),
+         llms: {
+           siteURL: 'https://example.com',
+           name: 'Acme',
+           contentTypes: {
+             'api::article.article': { section: 'Blog', url: (doc) => `/blog/${doc.slug}` },
+           },
+         },
+       },
+     },
+   })
+   ```
+
+3. Report AI crawler visits from the frontend:
+
+   ```ts
+   // Next.js frontend: proxy.ts (Next 16) or middleware.ts (Next 15)
+   import { withGeo } from '@askbeam/next'
+
+   export const proxy = withGeo({
+     endpoint: 'https://cms.example.com/api/geo/ingest',
+     secret: process.env.GEO_SECRET,
+   })
+   ```
+
+   Astro, Nuxt or plain Node instead? Use `geoFetchHandler` ([docs/frameworks.md](docs/frameworks.md), [examples/](examples)).
+
+4. Restart Strapi. The dashboard is under **AI Visibility** in the admin menu. llms.txt, Markdown and JSON-LD only
+   include content types the **Public** role can `find` ([details](#strapi-what-is-served-publicly)).
+
+<details>
+<summary>Screenshots: the dashboard in Payload and in Strapi</summary>
+
+![The AI visibility dashboard above the AI Crawler Hits list in the Payload admin](docs/payload-dashboard.png)
+
+![The AI Visibility page in the Strapi admin](docs/strapi-dashboard.png)
+
+</details>
+
+### Next steps
+
+- Serve [llms.txt on your domain](#llmstxt-on-your-domain), a [Markdown version of each page](#markdown-version-of-each-page)
+  and [JSON-LD](#json-ld).
+- Check pages while you write with the [editor GEO panel](#editor-geo-panel), and confirm the setup works in
+  [Setup status](#setup-status).
+- Track [AI referral visits and citation evidence](#ai-referrals-and-citation-evidence).
+
+## What gets recorded
 
 Visits fall into three kinds:
 
@@ -21,16 +153,6 @@ Visits fall into three kinds:
 | `search` | OAI-SearchBot, Claude-SearchBot, PerplexityBot, Kimi-SearchBot, YandexAdditional... | Your content is indexed by an AI search product |
 | `user` | ChatGPT-User, Claude-User, Perplexity-User, Kimi-User, Google-GeminiNotebook... | A real person asked an AI a question and it opened your page |
 
-## Packages
-
-| Package | What it is |
-| --- | --- |
-| [`@askbeam/core`](packages/geo-core) | CMS-agnostic: bot list, IP verification, ingest, llms.txt builder, rich text to Markdown, stats |
-| [`@askbeam/dashboard`](packages/geo-dashboard) | Shared React dashboard, rendered by both CMS adapters |
-| [`@askbeam/next`](packages/geo-next) | Frontend SDK: proxy that reports AI crawler requests, routes for llms.txt (and its parts) on your domain, a cache notice receiver, and `geoFetchHandler` for Astro / Nuxt / Node |
-| [`@askbeam/payload-plugin`](packages/payload-plugin-geo) | Payload 3 adapter: hits collection, ingest / stats / llms endpoints, dashboard on admin home and hits list |
-| [`@askbeam/strapi-plugin`](packages/strapi-plugin-geo) | Strapi 5 adapter: hits content type, ingest / stats / llms routes, "AI Visibility" admin page |
-
 A headless CMS never sees the requests to your frontend, so the frontend reports them:
 
 ```
@@ -38,62 +160,17 @@ AI crawler ──▶ Next.js proxy (@askbeam/next) ──waitUntil──▶ CMS 
                  detects bot, does not block the page      re-checks UA, verifies IP
 ```
 
-## Payload
+## Packages
 
-```ts
-// payload.config.ts
-import { geoPlugin } from '@askbeam/payload-plugin'
+| Package | What it is |
+| --- | --- |
+| [`@askbeam/payload-plugin`](packages/payload-plugin-geo) | Payload 3 adapter: hits collection, ingest / stats / llms endpoints, dashboard on admin home and hits list |
+| [`@askbeam/strapi-plugin`](packages/strapi-plugin-geo) | Strapi 5 adapter: hits content type, ingest / stats / llms routes, "AI Visibility" admin page |
+| [`@askbeam/next`](packages/geo-next) | Frontend SDK: proxy that reports AI crawler requests, routes for llms.txt (and its parts) on your domain, a cache notice receiver, and `geoFetchHandler` for Astro / Nuxt / Node |
+| [`@askbeam/core`](packages/geo-core) | CMS-agnostic: bot list, IP verification, ingest, llms.txt builder, rich text to Markdown, stats |
+| [`@askbeam/dashboard`](packages/geo-dashboard) | Shared React dashboard, rendered by both CMS adapters |
 
-export default buildConfig({
-  plugins: [
-    geoPlugin({
-      secret: process.env.GEO_SECRET,
-      llms: {
-        siteURL: 'https://example.com',
-        name: 'Acme',
-        description: 'What Acme does, in one sentence.',
-        collections: {
-          posts: { section: 'Blog', url: (doc) => `/blog/${doc.slug}` },
-          pages: { section: 'Pages', url: (doc) => `/${doc.slug}` },
-        },
-      },
-    }),
-  ],
-})
-```
-
-The dashboard appears on the admin home (compact) and above the **GEO > AI Crawler Hits** list (full).
-Run `payload generate:importmap` after installing so Payload finds the admin component.
-
-```ts
-// proxy.ts (Next 16) or middleware.ts (Next 15), in the same app
-import { withGeo } from '@askbeam/next'
-
-export const proxy = withGeo({ endpoint: '/api/geo/ingest', secret: process.env.GEO_SECRET })
-```
-
-## Strapi
-
-```js
-// config/plugins.js
-module.exports = ({ env }) => ({
-  geo: {
-    enabled: true,
-    config: {
-      secret: env('GEO_SECRET'),
-      llms: {
-        siteURL: 'https://example.com',
-        name: 'Acme',
-        contentTypes: {
-          'api::article.article': { section: 'Blog', url: (doc) => `/blog/${doc.slug}` },
-        },
-      },
-    },
-  },
-})
-```
-
-### What Strapi serves publicly
+## Strapi: what is served publicly
 
 llms.txt, llms-full.txt, Markdown, JSON-LD and the dashboard's coverage all use one visibility rule, the one an
 anonymous REST request gets:
@@ -125,18 +202,6 @@ If your frontend reads Strapi with an API token instead, set `llms.publicOnly: f
 publishing, unpublishing and permission changes apply on the next request. Responses carry
 `Cache-Control: public, max-age=300` (404s at most 60 s), so a browser or CDN in front may keep serving an
 unpublished page for that long. Set `llms.cacheMaxAge` (seconds, `0` for `no-store`), or purge the CDN on unpublish.
-
-The dashboard is under **AI Visibility** in the admin menu.
-
-```ts
-// In your Next.js frontend: proxy.ts or middleware.ts
-import { withGeo } from '@askbeam/next'
-
-export const proxy = withGeo({
-  endpoint: 'https://cms.example.com/api/geo/ingest',
-  secret: process.env.GEO_SECRET,
-})
-```
 
 ## llms.txt on your domain
 
@@ -384,9 +449,6 @@ Add your own ranges with `verifyIPs: { staticRanges: { claudebot: ['x.x.x.x/24']
 | Astro, Nuxt and plain Node frontends (`geoFetchHandler`) | [docs/frameworks.md](docs/frameworks.md), [examples/](examples) |
 | Extension APIs: bots, rules, field resolution, converters, JSON-LD, change events | [docs/extensions.md](docs/extensions.md), [examples/extension](examples/extension) |
 | New options in one place, upgrade and rollback | [docs/config-reference.md](docs/config-reference.md), [docs/migration.md](docs/migration.md) |
-
-Everything is off until configured, runs in your own CMS and frontend, and sends nothing anywhere you didn't
-configure: no telemetry, no license checks. Valid output is no promise of rich results, AI indexing or citation.
 
 ## Development
 
