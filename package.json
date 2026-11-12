@@ -1,6 +1,7 @@
 {
   "name": "askbeam",
   "private": true,
+  "license": "MIT",
   "workspaces": [
     "packages/geo-core",
     "packages/geo-dashboard",

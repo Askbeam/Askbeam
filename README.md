@@ -1,11 +1,13 @@
 # Askbeam
 
+**English** | [简体中文](README.zh-CN.md) | [Русский](README.ru.md)
+
 **See which AI crawlers read your headless CMS content, and make that content easy for AI to read.**
 Open-source plugins for Payload 3 and Strapi 5, plus a frontend SDK for Next.js, Astro, Nuxt and plain Node.
 
 [![npm](https://img.shields.io/npm/v/@askbeam/core?label=npm&color=6c5ce7)](https://www.npmjs.com/org/askbeam)
 [![CI](https://github.com/Askbeam/Askbeam/actions/workflows/ci.yml/badge.svg)](https://github.com/Askbeam/Askbeam/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ![The AI visibility dashboard: crawler visits, live user fetches, content coverage and llms.txt reads, a daily chart, visits by platform, top pages, and pages no AI has crawled](docs/dashboard-preview.png)
 
@@ -469,7 +471,7 @@ npm run typecheck
 
 ## License
 
-MIT
+[MIT](LICENSE)
 
 ## Releasing
 
