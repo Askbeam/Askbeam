@@ -6,6 +6,7 @@
 Открытые плагины для Payload 3 и Strapi 5 и фронтенд-SDK для Next.js, Astro, Nuxt и обычного Node.
 
 [![npm](https://img.shields.io/npm/v/@askbeam/core?label=npm&color=6c5ce7)](https://www.npmjs.com/org/askbeam)
+[![downloads](https://img.shields.io/npm/dm/@askbeam/core?label=downloads&color=6c5ce7)](https://www.npmjs.com/package/@askbeam/core)
 [![CI](https://github.com/Askbeam/Askbeam/actions/workflows/ci.yml/badge.svg)](https://github.com/Askbeam/Askbeam/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 

@@ -1,6 +1,6 @@
 {
   "name": "@askbeam/dashboard",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Shared React dashboard for Askbeam, rendered inside the Payload and Strapi admin panels.",
   "license": "MIT",
   "repository": {
@@ -54,7 +54,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@askbeam/core": "0.5.0"
+    "@askbeam/core": "0.5.1"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0"
