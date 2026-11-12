@@ -13,10 +13,24 @@
   "keywords": [
     "strapi",
     "strapi-plugin",
+    "strapi5",
+    "strapi-v5",
+    "strapi-5",
     "geo",
+    "generative-engine-optimization",
+    "ai-seo",
     "llms.txt",
+    "llms-txt",
     "ai-crawler",
-    "gptbot"
+    "ai-bots",
+    "gptbot",
+    "claudebot",
+    "perplexity",
+    "chatgpt",
+    "json-ld",
+    "analytics",
+    "headless-cms",
+    "askbeam"
   ],
   "type": "commonjs",
   "strapi": {
