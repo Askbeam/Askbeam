@@ -1,9 +1,9 @@
-# strapi-plugin-geo
+# @askbeam/strapi-plugin
 
-[Headless GEO](https://github.com/echoatgrs/geo-plugin) for Strapi 5: see which AI crawlers read your frontend, serve llms.txt, per-page Markdown and JSON-LD from your content, and get an "AI Visibility" page in the admin.
+[Askbeam](https://github.com/Askbeam/Askbeam) for Strapi 5: see which AI crawlers read your frontend, serve llms.txt, per-page Markdown and JSON-LD from your content, and get an "AI Visibility" page in the admin.
 
 ```sh
-npm install strapi-plugin-geo
+npm install @askbeam/strapi-plugin
 ```
 
 ```js
@@ -26,16 +26,16 @@ module.exports = ({ env }) => ({
 llms.txt, Markdown and JSON-LD only serve what an anonymous REST request could read: published entries of content
 types whose `find` the **Public** role is allowed, sanitized like the REST API. Content types with custom route
 policies are skipped unless you add an `isPublic(entry)` check. If your frontend reads Strapi with an API token
-instead, set `llms.publicOnly: false`. See [What Strapi serves publicly](https://github.com/echoatgrs/geo-plugin#what-strapi-serves-publicly).
+instead, set `llms.publicOnly: false`. See [What Strapi serves publicly](https://github.com/Askbeam/Askbeam#what-strapi-serves-publicly).
 
-Strapi can't see requests to your frontend, so add [`@garus-ltd/geo-next`](https://www.npmjs.com/package/@garus-ltd/geo-next) there:
+Strapi can't see requests to your frontend, so add [`@askbeam/next`](https://www.npmjs.com/package/@askbeam/next) there:
 
 ```ts
-import { withGeo } from '@garus-ltd/geo-next'
+import { withGeo } from '@askbeam/next'
 
 export const proxy = withGeo({ endpoint: 'https://cms.example.com/api/geo/ingest', secret: process.env.GEO_SECRET })
 ```
 
-Full docs: https://github.com/echoatgrs/geo-plugin
+Full docs: https://github.com/Askbeam/Askbeam
 
-More: [JSON-LD presets](https://github.com/echoatgrs/geo-plugin/blob/main/docs/jsonld-presets.md), [converters](https://github.com/echoatgrs/geo-plugin/blob/main/docs/converters.md), [cache notices](https://github.com/echoatgrs/geo-plugin/blob/main/docs/cache.md), [large sites](https://github.com/echoatgrs/geo-plugin/blob/main/docs/segments.md), [data maintenance](https://github.com/echoatgrs/geo-plugin/blob/main/docs/maintenance.md), [extensions](https://github.com/echoatgrs/geo-plugin/blob/main/docs/extensions.md), [upgrading](https://github.com/echoatgrs/geo-plugin/blob/main/docs/migration.md).
+More: [JSON-LD presets](https://github.com/Askbeam/Askbeam/blob/main/docs/jsonld-presets.md), [converters](https://github.com/Askbeam/Askbeam/blob/main/docs/converters.md), [cache notices](https://github.com/Askbeam/Askbeam/blob/main/docs/cache.md), [large sites](https://github.com/Askbeam/Askbeam/blob/main/docs/segments.md), [data maintenance](https://github.com/Askbeam/Askbeam/blob/main/docs/maintenance.md), [extensions](https://github.com/Askbeam/Askbeam/blob/main/docs/extensions.md), [upgrading](https://github.com/Askbeam/Askbeam/blob/main/docs/migration.md).

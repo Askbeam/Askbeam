@@ -1,4 +1,4 @@
-import type { DiagnosticItem, DiagnosticStatus } from '@garus-ltd/geo-core'
+import type { DiagnosticItem, DiagnosticStatus } from '@askbeam/core'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 
 export interface SetupReport {

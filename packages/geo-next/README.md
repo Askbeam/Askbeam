@@ -1,17 +1,17 @@
-# @garus-ltd/geo-next
+# @askbeam/next
 
-Frontend SDK for [Headless GEO](https://github.com/echoatgrs/geo-plugin). Your CMS never sees requests to your frontend, so this reports AI crawler visits (GPTBot, ClaudeBot, ChatGPT-User...) to it, and serves your CMS-generated llms.txt and per-page Markdown on your own domain.
+Frontend SDK for [Askbeam](https://github.com/Askbeam/Askbeam). Your CMS never sees requests to your frontend, so this reports AI crawler visits (GPTBot, ClaudeBot, ChatGPT-User...) to it, and serves your CMS-generated llms.txt and per-page Markdown on your own domain.
 
 ```ts
 // proxy.ts (Next 16) or middleware.ts (Next 15)
-import { withGeo } from '@garus-ltd/geo-next'
+import { withGeo } from '@askbeam/next'
 
 export const proxy = withGeo({ endpoint: process.env.GEO_INGEST_URL!, secret: process.env.GEO_SECRET })
 ```
 
 ```ts
 // app/llms.txt/route.ts
-import { llmsRoute } from '@garus-ltd/geo-next'
+import { llmsRoute } from '@askbeam/next'
 
 export const GET = llmsRoute({ source: `${process.env.CMS_URL}/api/geo/llms.txt` })
 ```
@@ -49,6 +49,6 @@ export const POST = revalidationHandler({
 ```
 
 Astro, Nuxt, a plain Node server or any Fetch API framework: `geoFetchHandler` (see
-[docs/frameworks.md](https://github.com/echoatgrs/geo-plugin/blob/main/docs/frameworks.md)).
+[docs/frameworks.md](https://github.com/Askbeam/Askbeam/blob/main/docs/frameworks.md)).
 
 Uses only Fetch APIs, so `trackAICrawler(request, ctx, options)` also works in Cloudflare Workers.

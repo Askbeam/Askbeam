@@ -9,7 +9,7 @@ import {
   type DeliveryRecord,
   type InvalidationOptions,
   type LlmsDocument,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 import type { CollectionAfterChangeHook, CollectionAfterDeleteHook, CollectionBeforeChangeHook, CollectionBeforeDeleteHook, CollectionConfig, Endpoint, Payload, PayloadRequest } from 'payload'
 import { mapDoc, queryCollection, type LlmsOptions } from './llms.js'
 

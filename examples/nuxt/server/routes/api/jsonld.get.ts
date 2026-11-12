@@ -1,4 +1,4 @@
-import { fetchJsonLd } from '@garus-ltd/geo-next'
+import { fetchJsonLd } from '@askbeam/next'
 
 /** JSON-LD of a page, cached in Nitro storage until a cache notice drops it. */
 export default defineEventHandler(async (event) => {

@@ -2,7 +2,7 @@
   "name": "geo-example-astro-ssr",
   "private": true,
   "type": "module",
-  "description": "Headless GEO with Astro in SSR mode (Node adapter).",
+  "description": "Askbeam with Astro in SSR mode (Node adapter).",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@astrojs/node": "11.1.9",
-    "@garus-ltd/geo-next": "^0.4.0",
+    "@askbeam/next": "^0.5.0",
     "astro": "7.4.1"
   }
 }

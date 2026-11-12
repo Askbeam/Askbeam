@@ -18,6 +18,6 @@ export default defineConfig([
     outExtension: ({ format }) => ({ js: format === 'esm' ? '.mjs' : '.js' }),
     dts: false,
     sourcemap: true,
-    external: ['react', 'react/jsx-runtime', '@strapi/strapi/admin', '@garus-ltd/geo-dashboard'],
+    external: ['react', 'react/jsx-runtime', '@strapi/strapi/admin', '@askbeam/dashboard'],
   },
 ])

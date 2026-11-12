@@ -4,7 +4,7 @@ import {
   mapLlmsDocument,
   withRules,
   type Inspection,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 import { publicAccess } from './access'
 import { jsonLdSite, mappingOptions, populateOf } from './content'
 import type { StrapiLlmsConfig } from './config'

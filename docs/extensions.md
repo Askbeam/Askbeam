@@ -1,6 +1,6 @@
 # Extension APIs
 
-Everything here is a public export of `@garus-ltd/geo-core` (or an option of the CMS plugins). An example package
+Everything here is a public export of `@askbeam/core` (or an option of the CMS plugins). An example package
 that uses only these exports lives in [`examples/extension`](../examples/extension) and is tested with the rest
 of the repo.
 
@@ -19,7 +19,7 @@ an invalid result becomes a reported error), but it does not sandbox them.
 ## Bots
 
 ```ts
-import { defineBots } from '@garus-ltd/geo-core'
+import { defineBots } from '@askbeam/core'
 
 export const bots = defineBots([
   { id: 'acme-research', name: 'AcmeResearchBot', platform: 'Acme', purpose: 'search', uaToken: 'AcmeResearchBot',
@@ -35,7 +35,7 @@ unverifiable, never verified. Use the same list in the CMS and in the frontend.
 ## Rules
 
 ```ts
-import { defineRules } from '@garus-ltd/geo-core'
+import { defineRules } from '@askbeam/core'
 
 export const rules = defineRules([
   {

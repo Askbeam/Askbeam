@@ -54,7 +54,7 @@ describe('geoPlugin', () => {
       'get /geo/jsonld',
     ])
     expect(config.admin?.components?.beforeDashboard?.[0]).toMatchObject({
-      path: 'payload-plugin-geo/client#GeoDashboardClient',
+      path: '@askbeam/payload-plugin/client#GeoDashboardClient',
       clientProps: { statsURL: '/api/geo/stats', compact: true },
     })
     const hits = config.collections!.find((c) => c.slug === CRAWLER_HITS_SLUG)!
@@ -63,7 +63,7 @@ describe('geoPlugin', () => {
     expect(posts.fields.at(-1)).toMatchObject({
       name: 'geoPanel',
       type: 'ui',
-      admin: { position: 'sidebar', components: { Field: { path: 'payload-plugin-geo/client#GeoEditPanel', clientProps: { inspectURL: '/api/geo/inspect', collection: 'posts' } } } },
+      admin: { position: 'sidebar', components: { Field: { path: '@askbeam/payload-plugin/client#GeoEditPanel', clientProps: { inspectURL: '/api/geo/inspect', collection: 'posts' } } } },
     })
     expect(hits.fields.some((f: any) => f.name === 'geoPanel')).toBe(false)
     const off = geoPlugin({ editorPanel: false, llms: { siteURL: 'https://s', collections: { posts: {} } } })(base)

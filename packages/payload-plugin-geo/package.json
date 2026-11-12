@@ -1,22 +1,36 @@
 {
-  "name": "payload-plugin-geo",
-  "version": "0.4.0",
-  "description": "Headless GEO for Payload CMS: AI crawler logs, llms.txt and an AI visibility dashboard.",
+  "name": "@askbeam/payload-plugin",
+  "version": "0.5.0",
+  "description": "Askbeam for Payload CMS: AI crawler logs, llms.txt and an AI visibility dashboard.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/echoatgrs/geo-plugin.git",
+    "url": "git+https://github.com/Askbeam/Askbeam.git",
     "directory": "packages/payload-plugin-geo"
   },
-  "homepage": "https://github.com/echoatgrs/geo-plugin#readme",
-  "bugs": "https://github.com/echoatgrs/geo-plugin/issues",
+  "homepage": "https://github.com/Askbeam/Askbeam#readme",
+  "bugs": "https://github.com/Askbeam/Askbeam/issues",
   "keywords": [
     "payload",
+    "payloadcms",
+    "payload-cms",
     "payload-plugin",
+    "payload-3",
     "geo",
+    "generative-engine-optimization",
+    "ai-seo",
     "llms.txt",
+    "llms-txt",
     "ai-crawler",
-    "gptbot"
+    "ai-bots",
+    "gptbot",
+    "claudebot",
+    "perplexity",
+    "chatgpt",
+    "json-ld",
+    "analytics",
+    "headless-cms",
+    "askbeam"
   ],
   "type": "module",
   "main": "./dist/index.cjs",
@@ -53,8 +67,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@garus-ltd/geo-core": "0.4.0",
-    "@garus-ltd/geo-dashboard": "0.4.0"
+    "@askbeam/core": "0.5.0",
+    "@askbeam/dashboard": "0.5.0"
   },
   "peerDependencies": {
     "payload": "^3.0.0",

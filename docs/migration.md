@@ -1,15 +1,32 @@
 # Upgrading to the expansion release (after 0.3.0)
 
+## New package names (0.5.0)
+
+From 0.5.0 the packages are published under the `@askbeam` scope. The old names are no longer on npm.
+
+| Old name | New name |
+| --- | --- |
+| `@garus-ltd/geo-core` | `@askbeam/core` |
+| `@garus-ltd/geo-dashboard` | `@askbeam/dashboard` |
+| `@garus-ltd/geo-next` | `@askbeam/next` |
+| `payload-plugin-geo` | `@askbeam/payload-plugin` |
+| `strapi-plugin-geo` | `@askbeam/strapi-plugin` |
+
+To switch, uninstall the old packages, install the new ones and update your imports. Nothing else changes: the
+Strapi plugin is still configured under `geo` in `config/plugins.js`, and the database collections, content types,
+routes and options keep their names. Payload: run `payload generate:importmap` afterwards, because the admin
+components are now referenced as `@askbeam/payload-plugin/client`.
+
 ## Compatibility
 
 | Package | Tested with | Supported range |
 | --- | --- | --- |
-| `payload-plugin-geo` | Payload 3.92.1, Next.js 16.3.3, SQLite | Payload `^3` (3.x with collection hooks and `payload.count`) |
-| `strapi-plugin-geo` | Strapi 5.60.0, SQLite | Strapi `^5` (Document Service middlewares) |
-| `@garus-ltd/geo-next` | Next.js 15 / 16, Astro 7.4.1, Nuxt 4.6.2, Node 22 | Any runtime with Fetch API `Request` / `Response` and WebCrypto (Node ≥ 20, edge runtimes) |
-| `@garus-ltd/geo-core` | Node 22 | Node ≥ 20 |
+| `@askbeam/payload-plugin` | Payload 3.92.1, Next.js 16.3.3, SQLite | Payload `^3` (3.x with collection hooks and `payload.count`) |
+| `@askbeam/strapi-plugin` | Strapi 5.60.0, SQLite | Strapi `^5` (Document Service middlewares) |
+| `@askbeam/next` | Next.js 15 / 16, Astro 7.4.1, Nuxt 4.6.2, Node 22 | Any runtime with Fetch API `Request` / `Response` and WebCrypto (Node ≥ 20, edge runtimes) |
+| `@askbeam/core` | Node 22 | Node ≥ 20 |
 
-The CMS plugins pin `@garus-ltd/geo-core` to the same version; upgrade all packages together.
+The CMS plugins pin `@askbeam/core` to the same version; upgrade all packages together.
 
 ## What changes on upgrade
 
@@ -35,7 +52,7 @@ New routes: Payload `/api/geo/llms/:file` (only with `segments`), `/api/geo/data
 ## Steps
 
 1. Back up the database.
-2. Upgrade all Headless GEO packages to the same version.
+2. Upgrade all Askbeam packages to the same version.
 3. Payload with Postgres: `npx payload migrate:create geo-expansion` then `npx payload migrate`. SQLite / MongoDB
    in development push the schema on start; in production create a migration the same way. Then
    `npx payload generate:importmap` (the dashboard client component gained the Data tab).
@@ -45,7 +62,8 @@ New routes: Payload `/api/geo/llms/:file` (only with `segments`), `/api/geo/data
 
 ## Rollback
 
-1. Reinstall the previous versions of all packages (`npm install payload-plugin-geo@0.3.0 …`).
+1. Reinstall the previous versions of all packages (`npm install @askbeam/payload-plugin@<previous> …`).
+   0.5.0 is the first release under `@askbeam`; versions before it are no longer on npm.
 2. The new tables are not read by older versions and can stay. To remove them: Payload, create a migration after
    downgrading (it drops `geo_jobs` / `geo_invalidations`); Strapi, `DROP TABLE geo_jobs; DROP TABLE
    geo_invalidations;` after the downgrade (Strapi doesn't drop tables of removed content types itself).

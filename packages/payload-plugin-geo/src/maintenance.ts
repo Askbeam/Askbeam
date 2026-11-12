@@ -10,7 +10,7 @@ import {
   runBatchedCleanup,
   type Dataset,
   type RetentionOptions,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 import type { CollectionConfig, Endpoint, Payload, PayloadRequest, Where } from 'payload'
 
 export const JOBS_SLUG = 'geo-jobs'

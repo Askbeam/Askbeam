@@ -1,5 +1,5 @@
 {
-  "name": "headless-geo",
+  "name": "askbeam",
   "private": true,
   "workspaces": [
     "packages/geo-core",

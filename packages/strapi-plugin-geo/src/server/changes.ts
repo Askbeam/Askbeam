@@ -10,7 +10,7 @@ import {
   type DeliveryRecord,
   type InvalidationOptions,
   type LlmsDocument,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 import type { StrapiLlmsConfig } from './config'
 import type { KoaContextLike, StrapiLike } from './types'
 

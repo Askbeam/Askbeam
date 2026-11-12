@@ -11,7 +11,7 @@ import {
   runBatchedCleanup,
   type Dataset,
   type RetentionOptions,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 import type { KoaContextLike, StrapiLike } from './types'
 
 export const JOB_UID = 'plugin::geo.job'

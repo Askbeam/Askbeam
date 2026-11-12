@@ -1,4 +1,4 @@
-import type { CheckResult, CheckStatus, FieldDiagnostic, Inspection } from '@garus-ltd/geo-core'
+import type { CheckResult, CheckStatus, FieldDiagnostic, Inspection } from '@askbeam/core'
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { DocumentTraffic, type DocumentStatsResult } from './document-traffic.js'
 

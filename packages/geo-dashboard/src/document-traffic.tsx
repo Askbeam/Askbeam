@@ -1,4 +1,4 @@
-import type { DocumentStats } from '@garus-ltd/geo-core'
+import type { DocumentStats } from '@askbeam/core'
 import { useEffect, useState, type CSSProperties } from 'react'
 
 export type DocumentStatsResult = DocumentStats | { unavailable: string }

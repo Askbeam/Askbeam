@@ -1,4 +1,4 @@
-import { geoFetchHandler, revalidationHandler } from '@garus-ltd/geo-next'
+import { geoFetchHandler, revalidationHandler } from '@askbeam/next'
 
 // Read at runtime (Node adapter), not at build time.
 export const CMS = (process.env.CMS_URL ?? 'http://localhost:1337').replace(/\/+$/, '')

@@ -1,28 +1,42 @@
 {
-  "name": "strapi-plugin-geo",
-  "version": "0.4.0",
-  "description": "Headless GEO for Strapi 5: AI crawler logs, llms.txt and an AI visibility dashboard.",
+  "name": "@askbeam/strapi-plugin",
+  "version": "0.5.0",
+  "description": "Askbeam for Strapi 5: AI crawler logs, llms.txt and an AI visibility dashboard.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/echoatgrs/geo-plugin.git",
+    "url": "git+https://github.com/Askbeam/Askbeam.git",
     "directory": "packages/strapi-plugin-geo"
   },
-  "homepage": "https://github.com/echoatgrs/geo-plugin#readme",
-  "bugs": "https://github.com/echoatgrs/geo-plugin/issues",
+  "homepage": "https://github.com/Askbeam/Askbeam#readme",
+  "bugs": "https://github.com/Askbeam/Askbeam/issues",
   "keywords": [
     "strapi",
     "strapi-plugin",
+    "strapi5",
+    "strapi-v5",
+    "strapi-5",
     "geo",
+    "generative-engine-optimization",
+    "ai-seo",
     "llms.txt",
+    "llms-txt",
     "ai-crawler",
-    "gptbot"
+    "ai-bots",
+    "gptbot",
+    "claudebot",
+    "perplexity",
+    "chatgpt",
+    "json-ld",
+    "analytics",
+    "headless-cms",
+    "askbeam"
   ],
   "type": "commonjs",
   "strapi": {
     "kind": "plugin",
     "name": "geo",
-    "displayName": "Headless GEO",
+    "displayName": "Askbeam",
     "description": "AI crawler logs for headless sites."
   },
   "main": "./dist/server/index.js",
@@ -50,8 +64,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@garus-ltd/geo-core": "0.4.0",
-    "@garus-ltd/geo-dashboard": "0.4.0"
+    "@askbeam/core": "0.5.0",
+    "@askbeam/dashboard": "0.5.0"
   },
   "peerDependencies": {
     "@strapi/strapi": "^5.0.0",

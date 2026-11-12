@@ -1,4 +1,4 @@
-# Headless GEO
+# Askbeam
 
 Make headless sites visible to AI, and see in your CMS which AI crawlers read which pages.
 
@@ -25,24 +25,24 @@ Visits fall into three kinds:
 
 | Package | What it is |
 | --- | --- |
-| [`@garus-ltd/geo-core`](packages/geo-core) | CMS-agnostic: bot list, IP verification, ingest, llms.txt builder, rich text to Markdown, stats |
-| [`@garus-ltd/geo-dashboard`](packages/geo-dashboard) | Shared React dashboard, rendered by both CMS adapters |
-| [`@garus-ltd/geo-next`](packages/geo-next) | Frontend SDK: proxy that reports AI crawler requests, routes for llms.txt (and its parts) on your domain, a cache notice receiver, and `geoFetchHandler` for Astro / Nuxt / Node |
-| [`payload-plugin-geo`](packages/payload-plugin-geo) | Payload 3 adapter: hits collection, ingest / stats / llms endpoints, dashboard on admin home and hits list |
-| [`strapi-plugin-geo`](packages/strapi-plugin-geo) | Strapi 5 adapter: hits content type, ingest / stats / llms routes, "AI Visibility" admin page |
+| [`@askbeam/core`](packages/geo-core) | CMS-agnostic: bot list, IP verification, ingest, llms.txt builder, rich text to Markdown, stats |
+| [`@askbeam/dashboard`](packages/geo-dashboard) | Shared React dashboard, rendered by both CMS adapters |
+| [`@askbeam/next`](packages/geo-next) | Frontend SDK: proxy that reports AI crawler requests, routes for llms.txt (and its parts) on your domain, a cache notice receiver, and `geoFetchHandler` for Astro / Nuxt / Node |
+| [`@askbeam/payload-plugin`](packages/payload-plugin-geo) | Payload 3 adapter: hits collection, ingest / stats / llms endpoints, dashboard on admin home and hits list |
+| [`@askbeam/strapi-plugin`](packages/strapi-plugin-geo) | Strapi 5 adapter: hits content type, ingest / stats / llms routes, "AI Visibility" admin page |
 
 A headless CMS never sees the requests to your frontend, so the frontend reports them:
 
 ```
-AI crawler ──▶ Next.js proxy (@garus-ltd/geo-next) ──waitUntil──▶ CMS /api/geo/ingest ──▶ your database
-                 detects bot, does not block the page            re-checks UA, verifies IP
+AI crawler ──▶ Next.js proxy (@askbeam/next) ──waitUntil──▶ CMS /api/geo/ingest ──▶ your database
+                 detects bot, does not block the page      re-checks UA, verifies IP
 ```
 
 ## Payload
 
 ```ts
 // payload.config.ts
-import { geoPlugin } from 'payload-plugin-geo'
+import { geoPlugin } from '@askbeam/payload-plugin'
 
 export default buildConfig({
   plugins: [
@@ -67,7 +67,7 @@ Run `payload generate:importmap` after installing so Payload finds the admin com
 
 ```ts
 // proxy.ts (Next 16) or middleware.ts (Next 15), in the same app
-import { withGeo } from '@garus-ltd/geo-next'
+import { withGeo } from '@askbeam/next'
 
 export const proxy = withGeo({ endpoint: '/api/geo/ingest', secret: process.env.GEO_SECRET })
 ```
@@ -130,7 +130,7 @@ The dashboard is under **AI Visibility** in the admin menu.
 
 ```ts
 // In your Next.js frontend: proxy.ts or middleware.ts
-import { withGeo } from '@garus-ltd/geo-next'
+import { withGeo } from '@askbeam/next'
 
 export const proxy = withGeo({
   endpoint: 'https://cms.example.com/api/geo/ingest',
@@ -145,7 +145,7 @@ so add a route in the frontend:
 
 ```ts
 // app/llms.txt/route.ts (and the same for app/llms-full.txt/route.ts)
-import { llmsRoute } from '@garus-ltd/geo-next'
+import { llmsRoute } from '@askbeam/next'
 
 export const GET = llmsRoute({ source: `${process.env.CMS_URL}/api/geo/llms.txt` })
 ```
@@ -173,7 +173,7 @@ export const proxy = withGeo({
 Now `/blog/post.md` returns the article as Markdown, and so does `/blog/post` when the request sends
 `Accept: text/markdown` (set `negotiate: false` to turn that off). Paths the CMS doesn't know fall through to your app.
 When Payload runs in the same Next.js app, a path works too: `markdown: { source: '/api/geo/markdown' }` (needs
-`@garus-ltd/geo-next` 0.2.1 or later; 0.2.0 looped on its own request unless the proxy's `matcher` excluded `/api`).
+`@askbeam/next` 0.2.1 or later; 0.2.0 looped on its own request unless the proxy's `matcher` excluded `/api`).
 Set `llms.markdownLinks: true` in the CMS to point llms.txt entries at the `.md` URLs. To advertise the Markdown
 version, add `alternates: { types: { 'text/markdown': '/blog/post.md' } }` to the page's Next.js metadata.
 
@@ -190,7 +190,7 @@ The CMS serves `/api/geo/jsonld?path=/blog/post` (`application/ld+json`). Render
 
 ```tsx
 // app/blog/[slug]/page.tsx
-import { fetchJsonLd, jsonLdScriptProps } from '@garus-ltd/geo-next'
+import { fetchJsonLd, jsonLdScriptProps } from '@askbeam/next'
 
 export default async function Post({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
@@ -226,7 +226,7 @@ The default type is `Article`; `jsonLd: false` turns it off. `headline`, `descri
 (`publishedAt` / `publishedDate` / `createdAt`), `dateModified`, `author` (falls back to your organization), `image`
 and `publisher` are filled in. Site-wide `llms.logo`, `llms.language` and `llms.mediaURL` (base for relative upload
 URLs, default the CMS server URL) are optional. The core builder `buildJsonLd(site, doc)` is exported from
-`@garus-ltd/geo-core` if you'd rather build it in the frontend.
+`@askbeam/core` if you'd rather build it in the frontend.
 
 ## Editor GEO panel
 
@@ -291,7 +291,7 @@ matching rows per request, narrowed in the database by path and date, and aggreg
 "No visits" only means no crawler request reached the site; it says nothing about whether an assistant cites the page.
 
 Already have middleware? Wrap it: `withGeo(options, yourMiddleware)`.
-`@garus-ltd/geo-next` only uses Fetch APIs, so `trackAICrawler(request, ctx, options)` also works in a Cloudflare Worker.
+`@askbeam/next` only uses Fetch APIs, so `trackAICrawler(request, ctx, options)` also works in a Cloudflare Worker.
 
 ## AI referrals and citation evidence
 
@@ -303,7 +303,7 @@ The dashboard's **AI referrals & citations** tab shows three signals side by sid
 | AI referral visits | A person's browser arrived from an AI assistant (its `Referer`). | Every citation; the Referer can be forged, so it is never shown as verified. |
 | Recorded citation evidence | Someone saw a link to the site in an answer and recorded it by hand. | All citations anywhere. "Verified" means a person checked the record, not that the platform confirmed it. |
 
-There is no automatic citation monitoring. A `CitationMonitorProvider` interface is exported from `@garus-ltd/geo-core`
+There is no automatic citation monitoring. A `CitationMonitorProvider` interface is exported from `@askbeam/core`
 for a future authorised API; with none configured the tab says "Automatic monitoring: not configured".
 
 ### AI referral visits (off by default)
@@ -411,7 +411,7 @@ MIT
 
 ## Releasing
 
-1. Bump `version` in each `packages/*/package.json` (and the internal `@garus-ltd/*` dependency versions).
+1. Bump `version` in each `packages/*/package.json` (and the internal `@askbeam/*` dependency versions).
 2. Push a tag: `git tag v0.1.0 && git push origin v0.1.0`.
 3. The Release workflow builds, tests and publishes every package not yet on npm, using
    [npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (no token stored).
@@ -419,4 +419,4 @@ MIT
 One-time setup: npm only lets you add a trusted publisher to a package that already exists, so the first
 version of each package is published by hand (`npm login`, then `npm publish -w packages/<pkg> --access public`).
 Then, on npmjs.com, open each package's **Settings → Trusted Publisher**, choose GitHub Actions, and enter
-owner `echoatgrs`, repository `geo-plugin`, workflow `release.yml`.
+owner `Askbeam`, repository `Askbeam`, workflow `release.yml`.

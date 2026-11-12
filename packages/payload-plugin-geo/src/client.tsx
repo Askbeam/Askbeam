@@ -12,8 +12,8 @@ import {
   type PanelInspection,
   type PreviewVersion,
   type SetupReport,
-} from '@garus-ltd/geo-dashboard'
-import type { DiagnosticItem } from '@garus-ltd/geo-core'
+} from '@askbeam/dashboard'
+import type { DiagnosticItem } from '@askbeam/core'
 import { useAllFormFields, useDocumentInfo } from '@payloadcms/ui'
 import { reduceFieldsToValues } from 'payload/shared'
 import { useCallback, useMemo } from 'react'

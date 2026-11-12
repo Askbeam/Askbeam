@@ -1,4 +1,4 @@
-import { createContentConverter, defineRules, type BotDefinition, type CheckThresholds, type ContentConverterOptions, type GeoRule, type LlmsSourceConfig, type OrganizationConfig, type SegmentOptions, type InvalidationOptions, type RetentionOptions, validateInvalidationOptions, validateRetention } from '@garus-ltd/geo-core'
+import { createContentConverter, defineRules, type BotDefinition, type CheckThresholds, type ContentConverterOptions, type GeoRule, type LlmsSourceConfig, type OrganizationConfig, type SegmentOptions, type InvalidationOptions, type RetentionOptions, validateInvalidationOptions, validateRetention } from '@askbeam/core'
 import type { StrapiCitationConfig, StrapiReferralConfig } from './evidence'
 
 export interface StrapiLlmsSource extends LlmsSourceConfig {

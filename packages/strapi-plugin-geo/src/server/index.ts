@@ -27,7 +27,7 @@ import {
   type IPVerifier,
   type LlmsDocument,
   type StatsHit,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 import { publicAccess, type PublicAccess } from './access'
 import { jsonLdSite, mappingOptions, pluralName, populateOf } from './content'
 import config, { type GeoStrapiConfig, type StrapiLlmsConfig } from './config'

@@ -66,7 +66,7 @@ the **same event id**, so a receiver that already handled it acknowledges it wit
 ```ts
 // Next.js: app/api/geo-revalidate/route.ts
 import { revalidatePath, revalidateTag } from 'next/cache'
-import { revalidationHandler } from '@garus-ltd/geo-next'
+import { revalidationHandler } from '@askbeam/next'
 
 export const POST = revalidationHandler({
   secret: process.env.GEO_REVALIDATE_SECRET!,

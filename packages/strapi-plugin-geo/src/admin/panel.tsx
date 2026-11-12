@@ -1,4 +1,4 @@
-import { GeoPanel, type DocumentStatsResult, type PanelInspection, type PreviewVersion } from '@garus-ltd/geo-dashboard'
+import { GeoPanel, type DocumentStatsResult, type PanelInspection, type PreviewVersion } from '@askbeam/dashboard'
 import { unstable_useContentManagerContext as useContentManagerContext, useFetchClient } from '@strapi/strapi/admin'
 import { useCallback, useEffect, useState } from 'react'
 

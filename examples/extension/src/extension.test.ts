@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createContentConverter, detectBot, runRules, siteChangeEvent, toLlmsDocument, buildJsonLd } from '@garus-ltd/geo-core'
+import { createContentConverter, detectBot, runRules, siteChangeEvent, toLlmsDocument, buildJsonLd } from '@askbeam/core'
 import { acmeBots, acmeConverters, acmeOnChange, acmePostsSource, acmeRules } from './index'
 
 describe('example extension (public exports only)', () => {

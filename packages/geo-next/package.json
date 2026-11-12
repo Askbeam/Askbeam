@@ -1,20 +1,36 @@
 {
-  "name": "@garus-ltd/geo-next",
-  "version": "0.4.0",
-  "description": "Frontend SDK for Headless GEO: Next.js proxy / middleware that reports AI crawler visits to your CMS.",
+  "name": "@askbeam/next",
+  "version": "0.5.0",
+  "description": "Frontend SDK for Askbeam: Next.js proxy / middleware that reports AI crawler visits to your CMS.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/echoatgrs/geo-plugin.git",
+    "url": "git+https://github.com/Askbeam/Askbeam.git",
     "directory": "packages/geo-next"
   },
-  "homepage": "https://github.com/echoatgrs/geo-plugin#readme",
-  "bugs": "https://github.com/echoatgrs/geo-plugin/issues",
+  "homepage": "https://github.com/Askbeam/Askbeam#readme",
+  "bugs": "https://github.com/Askbeam/Askbeam/issues",
   "keywords": [
     "geo",
+    "generative-engine-optimization",
+    "ai-seo",
     "llms.txt",
+    "llms-txt",
     "ai-crawler",
-    "headless-cms"
+    "ai-bots",
+    "gptbot",
+    "claudebot",
+    "perplexity",
+    "chatgpt",
+    "nextjs",
+    "next",
+    "middleware",
+    "proxy",
+    "astro",
+    "nuxt",
+    "json-ld",
+    "headless-cms",
+    "askbeam"
   ],
   "type": "module",
   "main": "./dist/index.cjs",
@@ -41,7 +57,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@garus-ltd/geo-core": "0.4.0"
+    "@askbeam/core": "0.5.0"
   },
   "module": "./dist/index.js",
   "publishConfig": {

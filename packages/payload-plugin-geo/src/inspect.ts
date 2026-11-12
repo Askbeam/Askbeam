@@ -4,7 +4,7 @@ import {
   sourceFields,
   withRules,
   type Inspection,
-} from '@garus-ltd/geo-core'
+} from '@askbeam/core'
 import type { CollectionConfig, Field, Payload, PayloadRequest } from 'payload'
 import { converterFor, jsonLdSite, linkResolver, mapDoc, queryCollection, type LlmsOptions } from './llms.js'
 
