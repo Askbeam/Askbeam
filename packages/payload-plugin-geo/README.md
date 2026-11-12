@@ -2,6 +2,11 @@
 
 [Askbeam](https://github.com/Askbeam/Askbeam) for Payload 3: see which AI crawlers read your site, serve llms.txt, per-page Markdown and JSON-LD, and get an AI visibility dashboard in the admin.
 
+Is ChatGPT reading your site? Payload can't see the requests that reach your frontend, so it can't tell you. This
+plugin can: a verified log of GPTBot, ClaudeBot, PerplexityBot, ChatGPT-User and others, stored in your own database.
+
+![The AI visibility dashboard in the Payload admin](https://raw.githubusercontent.com/Askbeam/Askbeam/main/docs/payload-dashboard.png)
+
 ```sh
 npm install @askbeam/payload-plugin @askbeam/next
 ```
@@ -31,6 +36,9 @@ import { withGeo } from '@askbeam/next'
 export const middleware = withGeo({ endpoint: '/api/geo/ingest', secret: process.env.GEO_SECRET })
 ```
 
-Then run `payload generate:importmap`. Full docs: https://github.com/Askbeam/Askbeam
+Set `GEO_SECRET` to a long random string (for example `openssl rand -hex 32`), then run
+`npx payload generate:importmap`. The dashboard appears on the admin home and above **GEO > AI Crawler Hits**.
+
+Full docs: https://github.com/Askbeam/Askbeam
 
 More: [JSON-LD presets](https://github.com/Askbeam/Askbeam/blob/main/docs/jsonld-presets.md), [converters](https://github.com/Askbeam/Askbeam/blob/main/docs/converters.md), [cache notices](https://github.com/Askbeam/Askbeam/blob/main/docs/cache.md), [large sites](https://github.com/Askbeam/Askbeam/blob/main/docs/segments.md), [data maintenance](https://github.com/Askbeam/Askbeam/blob/main/docs/maintenance.md), [extensions](https://github.com/Askbeam/Askbeam/blob/main/docs/extensions.md), [upgrading](https://github.com/Askbeam/Askbeam/blob/main/docs/migration.md).
