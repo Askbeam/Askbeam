@@ -42,3 +42,10 @@ Set `GEO_SECRET` to a long random string (for example `openssl rand -hex 32`), t
 Full docs: https://github.com/Askbeam/Askbeam
 
 More: [JSON-LD presets](https://github.com/Askbeam/Askbeam/blob/main/docs/jsonld-presets.md), [converters](https://github.com/Askbeam/Askbeam/blob/main/docs/converters.md), [cache notices](https://github.com/Askbeam/Askbeam/blob/main/docs/cache.md), [large sites](https://github.com/Askbeam/Askbeam/blob/main/docs/segments.md), [data maintenance](https://github.com/Askbeam/Askbeam/blob/main/docs/maintenance.md), [extensions](https://github.com/Askbeam/Askbeam/blob/main/docs/extensions.md), [upgrading](https://github.com/Askbeam/Askbeam/blob/main/docs/migration.md).
+
+## Issues and support
+
+Found a bug or have a question? Open an issue at https://github.com/Askbeam/Askbeam/issues with your Payload version,
+the plugin version and the steps to reproduce.
+
+The plugin has no usage tracking and no runtime dependencies besides `@askbeam/core` and `@askbeam/dashboard`.

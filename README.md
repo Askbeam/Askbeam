@@ -453,6 +453,11 @@ Add your own ranges with `verifyIPs: { staticRanges: { claudebot: ['x.x.x.x/24']
 | Extension APIs: bots, rules, field resolution, converters, JSON-LD, change events | [docs/extensions.md](docs/extensions.md), [examples/extension](examples/extension) |
 | New options in one place, upgrade and rollback | [docs/config-reference.md](docs/config-reference.md), [docs/migration.md](docs/migration.md) |
 
+## Issues and support
+
+Open an issue at https://github.com/Askbeam/Askbeam/issues with your CMS and Askbeam versions and the steps to
+reproduce.
+
 ## Development
 
 ```sh
