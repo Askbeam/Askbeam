@@ -2,6 +2,8 @@
 
 [Askbeam](https://github.com/Askbeam/Askbeam) for Strapi 5: see which AI crawlers read your frontend, serve llms.txt, per-page Markdown and JSON-LD from your content, and get an "AI Visibility" page in the admin.
 
+Also listed on the [Strapi Marketplace](https://community.strapi.io/marketplace/askbeam-ai-crawler-visibility).
+
 Is ChatGPT reading your site? Strapi can't see the requests that reach your frontend, so it can't tell you. This
 plugin can: a verified log of GPTBot, ClaudeBot, PerplexityBot, ChatGPT-User and others, stored in your own database.
 

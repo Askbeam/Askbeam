@@ -9,6 +9,7 @@ Open-source plugins for Payload 3 and Strapi 5, plus a frontend SDK for Next.js,
 [![downloads](https://img.shields.io/npm/dm/@askbeam/core?label=downloads&color=6c5ce7)](https://www.npmjs.com/package/@askbeam/core)
 [![CI](https://github.com/Askbeam/Askbeam/actions/workflows/ci.yml/badge.svg)](https://github.com/Askbeam/Askbeam/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Strapi Market](https://img.shields.io/badge/Strapi%20Market-listed-4945ff)](https://community.strapi.io/marketplace/askbeam-ai-crawler-visibility)
 
 ![The AI visibility dashboard: crawler visits, live user fetches, content coverage and llms.txt reads, a daily chart, visits by platform, top pages, and pages no AI has crawled](docs/dashboard-preview.png)
 
