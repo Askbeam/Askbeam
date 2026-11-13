@@ -1,6 +1,6 @@
 {
   "name": "@askbeam/strapi-plugin",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Askbeam for Strapi 5: AI crawler logs, llms.txt and an AI visibility dashboard.",
   "license": "MIT",
   "repository": {
@@ -64,8 +64,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@askbeam/core": "0.5.1",
-    "@askbeam/dashboard": "0.5.1"
+    "@askbeam/core": "0.5.2",
+    "@askbeam/dashboard": "0.5.2"
   },
   "peerDependencies": {
     "@strapi/strapi": "^5.0.0",
