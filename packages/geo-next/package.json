@@ -1,6 +1,6 @@
 {
   "name": "@askbeam/next",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Frontend SDK for Askbeam: Next.js proxy / middleware that reports AI crawler visits to your CMS.",
   "license": "MIT",
   "repository": {
@@ -57,7 +57,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@askbeam/core": "0.5.1"
+    "@askbeam/core": "0.5.2"
   },
   "module": "./dist/index.js",
   "publishConfig": {

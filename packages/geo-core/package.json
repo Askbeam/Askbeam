@@ -1,6 +1,6 @@
 {
   "name": "@askbeam/core",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "CMS-agnostic core for Askbeam: AI crawler detection, IP verification and hit ingestion.",
   "license": "MIT",
   "repository": {
