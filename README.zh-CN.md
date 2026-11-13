@@ -9,6 +9,7 @@
 [![downloads](https://img.shields.io/npm/dm/@askbeam/core?label=downloads&color=6c5ce7)](https://www.npmjs.com/package/@askbeam/core)
 [![CI](https://github.com/Askbeam/Askbeam/actions/workflows/ci.yml/badge.svg)](https://github.com/Askbeam/Askbeam/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Strapi Market](https://img.shields.io/badge/Strapi%20Market-listed-4945ff)](https://community.strapi.io/marketplace/askbeam-ai-crawler-visibility)
 
 ![AI 可见度面板：爬虫访问、实时用户抓取、内容覆盖率、llms.txt 读取次数、每日图表、各平台访问、热门页面，以及从未被 AI 抓取的页面](docs/dashboard-preview.png)
 

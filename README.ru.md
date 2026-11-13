@@ -9,6 +9,7 @@
 [![downloads](https://img.shields.io/npm/dm/@askbeam/core?label=downloads&color=6c5ce7)](https://www.npmjs.com/package/@askbeam/core)
 [![CI](https://github.com/Askbeam/Askbeam/actions/workflows/ci.yml/badge.svg)](https://github.com/Askbeam/Askbeam/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Strapi Market](https://img.shields.io/badge/Strapi%20Market-listed-4945ff)](https://community.strapi.io/marketplace/askbeam-ai-crawler-visibility)
 
 ![Панель AI-видимости: визиты краулеров, живые запросы пользователей, охват контента, чтения llms.txt, график по дням, визиты по платформам, популярные страницы и страницы, которые ещё не посещал ни один AI](docs/dashboard-preview.png)
 
